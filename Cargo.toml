@@ -1,0 +1,27 @@
+[package]
+name = "memobench"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = { version = "0.4.22", features = ["kv"] }
+env_logger = { version = "0.11.5", features = ["default"] }
+tokio = { version = "1.41", features = ["full"] }
+clap = { version = "4.0", features = ["derive"] }
+rand = "0.8.5"
+rand_chacha = "0.3.1"
+hdrhistogram = "7.5.4"
+
+optd-core = { path = "../optd/optd-core" }
+
+optd-persistent = { path = "../optd-experimental/optd-persistent" }
+sea-orm = { version = "1.1", features = [
+    "sqlx-sqlite",
+    "runtime-tokio-rustls",
+    "macros",
+    "debug-print",
+    "with-json",
+] }
+serde_json = "1.0.132"
