@@ -10,7 +10,7 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue, Database, DatabaseConnection, EntityTrait, ModelTrait,
     PaginatorTrait, TransactionTrait,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 use std::error::Error;
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
@@ -127,7 +127,9 @@ impl Benchmark for ExperimentalORM {
                     .await?;
 
                 // do something with it
-                _tot += group_expressions.len();
+                for e in group_expressions.iter() {
+                    _tot += e.data["children"].as_array().unwrap().len()
+                }
 
                 if let Err(_) = hist.record(start.elapsed().as_nanos() as u64) {
                     warn!("histogram overflow")
