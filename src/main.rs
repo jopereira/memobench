@@ -2,6 +2,7 @@ mod exporm;
 mod generator;
 mod inmem;
 mod null;
+mod inredis;
 
 use crate::exporm::ExperimentalORM;
 use crate::generator::{dump, generate, RawMemo};
@@ -18,6 +19,7 @@ use std::fs::File;
 use std::io::stdout;
 use std::io::Write;
 use std::time::Duration;
+use crate::inredis::Redis;
 
 #[derive(Parser)]
 struct Cli {
@@ -67,6 +69,12 @@ enum BenchTypes {
         #[arg(long, short = 'D', default_value = "sqlite:./sqlite.db?mode=rwc")]
         database: String,
     },
+    /// Redis/Valkey benchmark
+    Redis {
+        /// Database connection URL
+        #[arg(long, short = 'D', default_value = "redis://127.0.0.1/")]
+        database: String,
+    },
 }
 
 pub trait Benchmark {
@@ -93,6 +101,7 @@ fn main() {
         None => Box::new(Null::new().unwrap()),
         Some(BenchTypes::InMem) => Box::new(InMem::new().unwrap()),
         Some(BenchTypes::ExpORM{ database }) => Box::new(ExperimentalORM::new(database).unwrap()),
+        Some(BenchTypes::Redis { database }) => Box::new(Redis::new(database).unwrap()),
     };
 
     if args.output.is_some() || args.add || args.all {
