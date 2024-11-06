@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use crate::generator::RawMemo;
 use crate::Benchmark;
 use hdrhistogram::Histogram;
@@ -7,17 +6,23 @@ use rand::Rng;
 use rand_chacha::ChaCha8Rng;
 use redis;
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::time::{Duration, Instant};
 
 pub struct Redis {
     client: redis::Client,
     ngroups: usize,
+    entry: usize,
 }
 
 impl Redis {
     pub fn new(database: String) -> Result<Self, Box<dyn Error>> {
-        Ok(Redis { client: redis::Client::open(database)?, ngroups: 0 })
+        Ok(Redis {
+            client: redis::Client::open(database)?,
+            ngroups: 0,
+            entry: 0,
+        })
     }
 }
 
@@ -28,7 +33,7 @@ impl Benchmark for Redis {
 
         let mut con = self.client.get_connection()?;
 
-        for (i,g) in memo.groups.iter().enumerate() {
+        for (i, g) in memo.groups.iter().enumerate() {
             let start = Instant::now();
 
             let mut cmd = redis::cmd("HSET");
@@ -37,11 +42,14 @@ impl Benchmark for Redis {
             for j in g.exprs.iter() {
                 let e = &memo.exprs[*j];
 
-                cmd.arg(j.to_string()).arg(json!({ // Example operator
-                            "type": e.children.len(),
-                            "children": e.children,
-                            "moredata": "...",
-                        }).to_string());
+                cmd.arg(j.to_string()).arg(
+                    json!({ // Example operator
+                        "type": e.children.len(),
+                        "children": e.children,
+                        "moredata": "...",
+                    })
+                    .to_string(),
+                );
             }
 
             cmd.exec(&mut con)?;
@@ -51,6 +59,7 @@ impl Benchmark for Redis {
             }
         }
 
+        self.entry = memo.entry;
         self.ngroups = memo.groups.len();
 
         Ok(hist)
@@ -71,10 +80,10 @@ impl Benchmark for Redis {
             let mut cmd = redis::cmd("HGETALL");
             cmd.arg(g.to_string());
 
-            let group_expressions: BTreeMap<String,String> = cmd.query(&mut con)?;
+            let group_expressions: BTreeMap<String, String> = cmd.query(&mut con)?;
 
             // do something with it
-            for (_,json) in group_expressions.iter() {
+            for (_, json) in group_expressions.iter() {
                 let value: Value = serde_json::from_str(json)?;
                 _tot += value["type"].as_i64().unwrap();
             }
@@ -85,5 +94,9 @@ impl Benchmark for Redis {
         }
 
         Ok(hist)
+    }
+
+    fn match_rules(&mut self) -> Result<Histogram<u64>, Box<dyn Error>> {
+        todo!()
     }
 }

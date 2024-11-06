@@ -1,7 +1,7 @@
 use crate::generator::RawMemo;
 use crate::Benchmark;
 use hdrhistogram::Histogram;
-use log::{info, debug, warn};
+use log::{debug, info, warn};
 use optd_persistent::entities::prelude::{CascadesGroup, LogicalExpression};
 use optd_persistent::entities::*;
 use rand::Rng;
@@ -10,7 +10,7 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue, Database, DatabaseConnection, EntityTrait, ModelTrait,
     PaginatorTrait, TransactionTrait,
 };
-use serde_json::{json, Value};
+use serde_json::json;
 use std::error::Error;
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
@@ -18,6 +18,7 @@ use tokio::runtime::Runtime;
 pub struct ExperimentalORM {
     runtime: Runtime,
     database: DatabaseConnection,
+    entry: usize,
 }
 
 impl ExperimentalORM {
@@ -27,7 +28,11 @@ impl ExperimentalORM {
 
         info!("connected to database \"{}\"", url);
 
-        Ok(ExperimentalORM { runtime, database })
+        Ok(ExperimentalORM {
+            runtime,
+            database,
+            entry: 0,
+        })
     }
 }
 
@@ -98,6 +103,8 @@ impl Benchmark for ExperimentalORM {
                 }
             }
 
+            self.entry = memo.entry;
+
             Ok(hist)
         })
     }
@@ -138,5 +145,9 @@ impl Benchmark for ExperimentalORM {
 
             Ok(hist)
         })
+    }
+
+    fn match_rules(&mut self) -> Result<Histogram<u64>, Box<dyn Error>> {
+        todo!()
     }
 }

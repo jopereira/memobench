@@ -3,10 +3,11 @@ use crate::inmem::BenchRelNodeTyp::{Filter, Join, Placeholder, Scan};
 use crate::Benchmark;
 use hdrhistogram::Histogram;
 use log::warn;
-use optd_core::cascades::{GroupId, Memo, NaiveMemo};
+use optd_core::cascades::{ExprId, GroupId, Memo, NaiveMemo};
 use optd_core::rel_node::{RelNode, RelNodeRef, RelNodeTyp, Value};
 use rand::Rng;
 use rand_chacha::ChaCha8Rng;
+use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
@@ -78,6 +79,7 @@ impl Display for BenchPredTyp {
 pub struct InMem {
     memo: NaiveMemo<BenchRelNodeTyp>,
     group_ids: Vec<GroupId>, // because get_all_group_ids() is pub(crate)
+    entry: usize,
 }
 
 impl InMem {
@@ -85,6 +87,7 @@ impl InMem {
         Ok(InMem {
             memo: NaiveMemo::new(Arc::new([])),
             group_ids: vec![],
+            entry: 0,
         })
     }
 }
@@ -155,6 +158,8 @@ impl Benchmark for InMem {
             }
         }
 
+        self.entry = memo.entry;
+
         Ok(hist)
     }
 
@@ -179,5 +184,71 @@ impl Benchmark for InMem {
         }
 
         Ok(hist)
+    }
+
+    fn match_rules(&mut self) -> Result<Histogram<u64>, Box<dyn Error>> {
+        let mut info = MatchInfo {
+            visited_exprs: Default::default(),
+            visited_groups: Default::default(),
+            hist: Histogram::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?,
+            last: Instant::now(),
+        };
+        self.explore_group(&mut info, self.group_ids[self.entry]);
+
+        Ok(info.hist)
+    }
+}
+
+struct MatchInfo {
+    visited_exprs: HashSet<ExprId>,
+    visited_groups: HashSet<GroupId>,
+    hist: Histogram<u64>,
+    last: Instant,
+}
+
+impl InMem {
+    fn optimize_expression(&mut self, info: &mut MatchInfo, expr_id: ExprId) {
+        if info.visited_exprs.insert(expr_id) {
+            let top_expr = self.memo.get_expr_memoed(expr_id);
+
+            // top_matches in optimize_expression task
+            let mut _picks = vec![];
+            if let Filter = top_expr.typ {
+                // explore children first
+                for c in top_expr.children.iter() {
+                    self.explore_group(info, *c);
+                }
+
+                // match_and_pick_expr in apply_rule task
+                for bot_id in self
+                    .memo
+                    .get_all_exprs_in_group(top_expr.children[0])
+                    .iter()
+                {
+                    let bot_expr = self.memo.get_expr_memoed(*bot_id);
+                    if let Join = bot_expr.typ {
+                        _picks.push(bot_expr.children.clone());
+
+                        let now = Instant::now();
+                        if let Err(_) = info
+                            .hist
+                            .record(now.duration_since(info.last).as_nanos() as u64)
+                        {
+                            warn!("histogram overflow")
+                        }
+                        info.last = now;
+                    }
+                }
+            }
+        }
+    }
+
+    fn explore_group(&mut self, info: &mut MatchInfo, group_id: GroupId) {
+        if info.visited_groups.insert(group_id) {
+            let exprs = self.memo.get_all_exprs_in_group(group_id);
+            for expr in exprs {
+                self.optimize_expression(info, expr);
+            }
+        }
     }
 }

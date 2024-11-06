@@ -19,7 +19,7 @@ impl Benchmark for Null {
         let hist =
             Histogram::<u64>::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?;
 
-        warn!("no add in null benchmark");
+        warn!("no benchmark selected");
 
         Ok(hist)
     }
@@ -28,7 +28,16 @@ impl Benchmark for Null {
         let hist =
             Histogram::<u64>::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?;
 
-        warn!("no retrieve in null benchmark");
+        warn!("no benchmark selected");
+
+        Ok(hist)
+    }
+
+    fn match_rules(&mut self) -> Result<Histogram<u64>, Box<dyn Error>> {
+        let hist =
+            Histogram::<u64>::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?;
+
+        warn!("no benchmark selected");
 
         Ok(hist)
     }

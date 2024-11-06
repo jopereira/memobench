@@ -1,12 +1,13 @@
 mod exporm;
 mod generator;
 mod inmem;
-mod null;
 mod inredis;
+mod null;
 
 use crate::exporm::ExperimentalORM;
 use crate::generator::{dump, generate, RawMemo};
 use crate::inmem::InMem;
+use crate::inredis::Redis;
 use crate::null::Null;
 use clap::{arg, Parser, Subcommand};
 use hdrhistogram::Histogram;
@@ -19,7 +20,6 @@ use std::fs::File;
 use std::io::stdout;
 use std::io::Write;
 use std::time::Duration;
-use crate::inredis::Redis;
 
 #[derive(Parser)]
 struct Cli {
@@ -55,6 +55,10 @@ struct Cli {
     #[arg(long, short = 'r')]
     retrieve: bool,
 
+    /// Run retrieval workload
+    #[arg(long = "match", short = 'm')]
+    match_rule: bool,
+
     #[command(subcommand)]
     benchtype: Option<BenchTypes>,
 }
@@ -80,6 +84,7 @@ enum BenchTypes {
 pub trait Benchmark {
     fn add(&mut self, memo: &RawMemo) -> Result<Histogram<u64>, Box<dyn Error>>;
     fn retrieve(&mut self, rng: ChaCha8Rng) -> Result<Histogram<u64>, Box<dyn Error>>;
+    fn match_rules(&mut self) -> Result<Histogram<u64>, Box<dyn Error>>;
 }
 
 fn main() {
@@ -100,7 +105,7 @@ fn main() {
     let mut benchmark: Box<dyn Benchmark> = match args.benchtype {
         None => Box::new(Null::new().unwrap()),
         Some(BenchTypes::InMem) => Box::new(InMem::new().unwrap()),
-        Some(BenchTypes::ExpORM{ database }) => Box::new(ExperimentalORM::new(database).unwrap()),
+        Some(BenchTypes::ExpORM { database }) => Box::new(ExperimentalORM::new(database).unwrap()),
         Some(BenchTypes::Redis { database }) => Box::new(Redis::new(database).unwrap()),
     };
 
@@ -121,9 +126,7 @@ fn main() {
         }
 
         if args.add || args.all {
-            let hist = benchmark
-                .add(&memo)
-                .expect("error while running add test");
+            let hist = benchmark.add(&memo).expect("error while running add test");
             log_summary(hist, "add");
         }
     }
@@ -134,13 +137,21 @@ fn main() {
             .expect("error while runnning retrieve test");
         log_summary(hist, "retrieve");
     }
+
+    if args.match_rule || args.all {
+        let hist = benchmark
+            .match_rules()
+            .expect("error while runnning match test");
+        log_summary(hist, "match");
+    }
 }
 
 fn log_summary(hist: Histogram<u64>, workload: &str) {
-    info!(target: "memobench::workload", "{} : {} samples : min={:?} mean={:?} max={:?}",
+    info!(target: "memobench::workload", "{} : {} samples : min={:?} mean={:?} max={:?} ({} ops/s)",
             workload,
             hist.len(), Duration::from_nanos(hist.min()),
             Duration::from_nanos(hist.mean() as u64),
-            Duration::from_nanos(hist.max())
+            Duration::from_nanos(hist.max()),
+            1.0e9/hist.mean()
     );
 }
