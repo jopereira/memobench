@@ -3,7 +3,7 @@ use crate::inmem::BenchRelNodeTyp::{Filter, Join, Placeholder, Scan};
 use crate::Benchmark;
 use hdrhistogram::Histogram;
 use log::warn;
-use optd_core::cascades::{GroupId, Memo};
+use optd_core::cascades::{GroupId, Memo, NaiveMemo};
 use optd_core::rel_node::{RelNode, RelNodeRef, RelNodeTyp, Value};
 use rand::Rng;
 use rand_chacha::ChaCha8Rng;
@@ -20,6 +20,9 @@ pub enum BenchRelNodeTyp {
     Join,
     List,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum BenchPredTyp {}
 
 impl RelNodeTyp for BenchRelNodeTyp {
     fn is_logical(&self) -> bool {
@@ -46,6 +49,8 @@ impl RelNodeTyp for BenchRelNodeTyp {
             None
         }
     }
+
+    type PredType = BenchPredTyp;
 }
 
 impl Display for BenchRelNodeTyp {
@@ -64,15 +69,21 @@ impl Display for BenchRelNodeTyp {
     }
 }
 
+impl Display for BenchPredTyp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "()")
+    }
+}
+
 pub struct InMem {
-    memo: Memo<BenchRelNodeTyp>,
+    memo: NaiveMemo<BenchRelNodeTyp>,
     group_ids: Vec<GroupId>, // because get_all_group_ids() is pub(crate)
 }
 
 impl InMem {
     pub fn new() -> Result<Self, Box<dyn Error>> {
         Ok(InMem {
-            memo: Memo::new(Arc::new([])),
+            memo: NaiveMemo::new(Arc::new([])),
             group_ids: vec![],
         })
     }
@@ -95,6 +106,7 @@ impl Benchmark for InMem {
                     children.push(RelNodeRef::new(RelNode {
                         typ: Placeholder(self.group_ids[*c]),
                         children: vec![],
+                        predicates: vec![],
                         data: Some(Value::UInt64(*j as u64)),
                     }));
                 }
@@ -103,16 +115,19 @@ impl Benchmark for InMem {
                     0 => RelNodeRef::new(RelNode {
                         typ: Scan,
                         children: children,
+                        predicates: vec![],
                         data: Some(Value::UInt64(*j as u64)),
                     }),
                     1 => RelNodeRef::new(RelNode {
                         typ: Filter,
                         children: children,
+                        predicates: vec![],
                         data: Some(Value::UInt64(*j as u64)),
                     }),
                     2 => RelNodeRef::new(RelNode {
                         typ: Join,
                         children: children,
+                        predicates: vec![],
                         data: Some(Value::UInt64(*j as u64)),
                     }),
                     _ => unreachable!(),
