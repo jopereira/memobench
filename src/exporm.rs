@@ -7,18 +7,18 @@ use optd_persistent::entities::*;
 use rand::Rng;
 use rand_chacha::ChaCha8Rng;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, Database, DatabaseConnection, EntityTrait, ModelTrait,
+    ActiveModelTrait, ActiveValue, Database, DatabaseConnection, DbErr, EntityTrait, ModelTrait,
     PaginatorTrait, TransactionTrait,
 };
 use serde_json::json;
+use std::collections::HashSet;
 use std::error::Error;
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 
 pub struct ExperimentalORM {
-    runtime: Runtime,
     database: DatabaseConnection,
-    entry: usize,
+    entry: i32,
 }
 
 impl ExperimentalORM {
@@ -28,17 +28,14 @@ impl ExperimentalORM {
 
         info!("connected to database \"{}\"", url);
 
-        Ok(ExperimentalORM {
-            runtime,
-            database,
-            entry: 0,
-        })
+        Ok(ExperimentalORM { database, entry: 0 })
     }
 }
 
 impl Benchmark for ExperimentalORM {
     fn add(&mut self, memo: &RawMemo) -> Result<Histogram<u64>, Box<dyn Error>> {
-        self.runtime.block_on(async {
+        let runtime = Runtime::new().unwrap();
+        runtime.block_on(async {
             let mut hist =
                 Histogram::<u64>::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?;
 
@@ -103,14 +100,15 @@ impl Benchmark for ExperimentalORM {
                 }
             }
 
-            self.entry = memo.entry;
+            self.entry = memo.entry as i32;
 
             Ok(hist)
         })
     }
 
     fn retrieve(&mut self, mut rng: ChaCha8Rng) -> Result<Histogram<u64>, Box<dyn Error>> {
-        self.runtime.block_on(async {
+        let runtime = Runtime::new().unwrap();
+        runtime.block_on(async {
             let mut hist =
                 Histogram::<u64>::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?;
 
@@ -148,6 +146,92 @@ impl Benchmark for ExperimentalORM {
     }
 
     fn match_rules(&mut self) -> Result<Histogram<u64>, Box<dyn Error>> {
-        todo!()
+        let mut info = MatchInfo {
+            visited_exprs: Default::default(),
+            visited_groups: Default::default(),
+            hist: Histogram::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?,
+            last: Instant::now(),
+        };
+
+        let runtime = Runtime::new().unwrap();
+        runtime
+            .block_on(self.explore_group(&mut info, self.entry))
+            .unwrap();
+
+        Ok(info.hist)
+    }
+}
+
+struct MatchInfo {
+    visited_exprs: HashSet<i32>,
+    visited_groups: HashSet<i32>,
+    hist: Histogram<u64>,
+    last: Instant,
+}
+
+impl ExperimentalORM {
+    async fn optimize_expression(
+        &mut self,
+        info: &mut MatchInfo,
+        top_expr: &logical_expression::Model,
+    ) -> Result<(), DbErr> {
+        if info.visited_exprs.insert(top_expr.id) {
+            // top_matches in optimize_expression task
+            let mut _pick = vec![];
+            if top_expr.data["type"].as_str().unwrap() == "Filter" {
+                let children = top_expr.data["children"].as_array().unwrap();
+
+                // explore children first
+                for c in children {
+                    Box::pin(self.explore_group(info, c.as_i64().unwrap() as i32)).await?;
+                }
+
+                // match_and_pick_expr in apply_rule task
+                let bot_group = CascadesGroup::find_by_id(children[0].as_i64().unwrap() as i32)
+                    .one(&self.database)
+                    .await?
+                    .unwrap();
+                let group_expressions: Vec<logical_expression::Model> = bot_group
+                    .find_related(LogicalExpression)
+                    .all(&self.database)
+                    .await?;
+
+                for bot_expr in group_expressions.iter() {
+                    if bot_expr.data["type"].as_str().unwrap() == "Join" {
+                        _pick.push(bot_expr.data["children"].clone());
+
+                        let now = Instant::now();
+                        if let Err(_) = info
+                            .hist
+                            .record(now.duration_since(info.last).as_nanos() as u64)
+                        {
+                            warn!("histogram overflow")
+                        }
+                        info.last = now;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn explore_group(&mut self, info: &mut MatchInfo, group_id: i32) -> Result<(), DbErr> {
+        if info.visited_groups.insert(group_id) {
+            let group = CascadesGroup::find_by_id(group_id)
+                .one(&self.database)
+                .await?
+                .unwrap();
+
+            let group_expressions: Vec<logical_expression::Model> = group
+                .find_related(LogicalExpression)
+                .all(&self.database)
+                .await?;
+
+            for e in group_expressions.iter() {
+                Box::pin(self.optimize_expression(info, e)).await?;
+            }
+        }
+        Ok(())
     }
 }
