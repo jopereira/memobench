@@ -20,6 +20,7 @@ use std::fs::File;
 use std::io::stdout;
 use std::io::Write;
 use std::time::Duration;
+use tokio::time::Instant;
 
 #[derive(Parser)]
 struct Cli {
@@ -72,6 +73,10 @@ enum BenchTypes {
         /// Database connection URL
         #[arg(long, short = 'D', default_value = "sqlite:./sqlite.db?mode=rwc")]
         database: String,
+
+        /// Custom SQL for matches
+        #[arg(long, short = 'q')]
+        sql: bool,
     },
     /// Redis/Valkey benchmark
     Redis {
@@ -105,7 +110,7 @@ fn main() {
     let mut benchmark: Box<dyn Benchmark> = match args.benchtype {
         None => Box::new(Null::new().unwrap()),
         Some(BenchTypes::InMem) => Box::new(InMem::new().unwrap()),
-        Some(BenchTypes::ExpORM { database }) => Box::new(ExperimentalORM::new(database).unwrap()),
+        Some(BenchTypes::ExpORM { database, sql }) => Box::new(ExperimentalORM::new(database, sql).unwrap()),
         Some(BenchTypes::Redis { database }) => Box::new(Redis::new(database).unwrap()),
     };
 
@@ -126,32 +131,35 @@ fn main() {
         }
 
         if args.add || args.all {
+            let now = Instant::now();
             let hist = benchmark.add(&memo).expect("error while running add test");
-            log_summary(hist, "add");
+            log_summary(hist, "add", now.elapsed());
         }
     }
 
     if args.retrieve || args.all {
+        let now = Instant::now();
         let hist = benchmark
             .retrieve(ChaCha8Rng::seed_from_u64(seed + 1000))
             .expect("error while runnning retrieve test");
-        log_summary(hist, "retrieve");
+        log_summary(hist, "retrieve", now.elapsed());
     }
 
     if args.match_rule || args.all {
+        let now = Instant::now();
         let hist = benchmark
             .match_rules()
             .expect("error while runnning match test");
-        log_summary(hist, "match");
+        log_summary(hist, "match", now.elapsed());
     }
 }
 
-fn log_summary(hist: Histogram<u64>, workload: &str) {
-    info!(target: "memobench::workload", "{} : {} samples : min={:?} mean={:?} max={:?} ({} ops/s)",
+fn log_summary(hist: Histogram<u64>, workload: &str, tot: Duration) {
+    info!(target: "memobench::workload", "{} : {} samples : min={:?} mean={:?} max={:?} ({} ops/s - {:?})",
             workload,
             hist.len(), Duration::from_nanos(hist.min()),
             Duration::from_nanos(hist.mean() as u64),
             Duration::from_nanos(hist.max()),
-            1.0e9/hist.mean()
+            1.0e9/hist.mean(), tot
     );
 }

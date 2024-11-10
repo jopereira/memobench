@@ -6,10 +6,7 @@ use optd_persistent::entities::prelude::{CascadesGroup, LogicalExpression};
 use optd_persistent::entities::*;
 use rand::Rng;
 use rand_chacha::ChaCha8Rng;
-use sea_orm::{
-    ActiveModelTrait, ActiveValue, Database, DatabaseConnection, DbErr, EntityTrait, ModelTrait,
-    PaginatorTrait, TransactionTrait,
-};
+use sea_orm::{ActiveModelTrait, ActiveValue, Condition, Database, DatabaseConnection, DbBackend, DbErr, EntityTrait, JoinType, ModelTrait, PaginatorTrait, QueryFilter, QuerySelect, Statement, TransactionTrait};
 use serde_json::json;
 use std::collections::HashSet;
 use std::error::Error;
@@ -18,17 +15,23 @@ use tokio::runtime::Runtime;
 
 pub struct ExperimentalORM {
     database: DatabaseConnection,
+    sql: bool,
     entry: i32,
 }
 
 impl ExperimentalORM {
-    pub fn new(url: String) -> Result<Self, Box<dyn Error>> {
+    pub fn new(url: String, sql: bool) -> Result<Self, Box<dyn Error>> {
         let runtime = Runtime::new().unwrap();
         let database = runtime.block_on(Database::connect(&url))?;
 
         info!("connected to database \"{}\"", url);
 
-        Ok(ExperimentalORM { database, entry: 0 })
+        let mut entry = 0;
+        runtime.block_on(async {
+            entry = CascadesGroup::find().count(&database).await.unwrap() as i32 - 1;
+        });
+
+        Ok(ExperimentalORM { database, sql, entry })
     }
 }
 
@@ -154,9 +157,16 @@ impl Benchmark for ExperimentalORM {
         };
 
         let runtime = Runtime::new().unwrap();
-        runtime
-            .block_on(self.explore_group(&mut info, self.entry))
-            .unwrap();
+
+        if self.sql {
+            runtime
+                .block_on(self.explore_group_pd(&mut info, self.entry))
+                .unwrap();
+        } else {
+            runtime
+                .block_on(self.explore_group(&mut info, self.entry))
+                .unwrap();
+        }
 
         Ok(info.hist)
     }
@@ -230,6 +240,39 @@ impl ExperimentalORM {
 
             for e in group_expressions.iter() {
                 Box::pin(self.optimize_expression(info, e)).await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn explore_group_pd(&mut self, info: &mut MatchInfo, group_id: i32) -> Result<(), DbErr> {
+        if info.visited_groups.insert(group_id) {
+            let picks = LogicalExpression::find()
+                .from_raw_sql(Statement::from_sql_and_values(
+                    DbBackend::Sqlite,
+                    r#"SELECT bot.id as id, bot.group_id as group_id,
+                            bot.fingerprint as fingerprint, bot.data as data
+                        FROM logical_expression top
+                        JOIN logical_expression bot ON top.data ->> '$.children[0]' = bot.group_id
+                        WHERE top.group_id = $1 AND
+                        top.data ->> '$.type' = 'Filter' AND bot.data ->> '$.type' = 'Join'"#,
+                    [group_id.into()],
+                ))
+                .all(&self.database)
+                .await?;
+
+            let mut _pick = vec![];
+            for bot_expr in picks.iter() {
+                _pick.push(bot_expr.data["children"].clone());
+
+                let now = Instant::now();
+                if let Err(_) = info
+                    .hist
+                    .record(now.duration_since(info.last).as_nanos() as u64)
+                {
+                    warn!("histogram overflow")
+                }
+                info.last = now;
             }
         }
         Ok(())
