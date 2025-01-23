@@ -125,15 +125,16 @@ impl Redis {
         if info.visited_exprs.insert(expr_id) {
             let top_expr: Value = serde_json::from_str(json)?;
 
+            let children = top_expr["children"].as_array().unwrap();
+
+            // explore children first
+            for c in children.iter() {
+                self.explore_group(info, c.as_i64().unwrap() as usize)?;
+            }
+
             // top_matches in optimize_expression task
             let mut _picks = vec![];
             if top_expr["type"].as_i64().unwrap() == 1 {
-                let children = top_expr["children"].as_array().unwrap();
-
-                // explore children first
-                for c in children.iter() {
-                    self.explore_group(info, c.as_i64().unwrap() as usize)?;
-                }
 
                 // match_and_pick_expr in apply_rule task
                 let mut con = self.client.get_connection()?;

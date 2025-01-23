@@ -1,10 +1,10 @@
 use crate::generator::RawMemo;
-use crate::inmem::BenchRelNodeTyp::{Filter, Join, Placeholder, Scan};
+use crate::inmem::BenchRelNodeTyp::{Filter, Join, Scan};
 use crate::Benchmark;
 use hdrhistogram::Histogram;
 use log::warn;
 use optd_core::cascades::{ExprId, GroupId, Memo, NaiveMemo};
-use optd_core::rel_node::{RelNode, RelNodeRef, RelNodeTyp, Value};
+use optd_core::nodes::{PlanNode, ArcPlanNode, NodeType, PlanNodeOrGroup};
 use rand::Rng;
 use rand_chacha::ChaCha8Rng;
 use std::collections::HashSet;
@@ -15,39 +15,20 @@ use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BenchRelNodeTyp {
-    Placeholder(GroupId),
     Scan,
     Filter,
     Join,
-    List,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BenchPredTyp {}
 
-impl RelNodeTyp for BenchRelNodeTyp {
+impl NodeType for BenchRelNodeTyp {
     fn is_logical(&self) -> bool {
         match self {
             BenchRelNodeTyp::Scan => true,
             BenchRelNodeTyp::Filter => true,
             BenchRelNodeTyp::Join => true,
-            _ => false,
-        }
-    }
-
-    fn group_typ(group_id: GroupId) -> Self {
-        Self::Placeholder(group_id)
-    }
-
-    fn list_typ() -> Self {
-        Self::List
-    }
-
-    fn extract_group(&self) -> Option<GroupId> {
-        if let Self::Placeholder(group_id) = self {
-            Some(*group_id)
-        } else {
-            None
         }
     }
 
@@ -60,11 +41,9 @@ impl Display for BenchRelNodeTyp {
             f,
             "{}",
             match self {
-                Placeholder(_) => "Placeholder",
                 Scan => "Scan",
                 Filter => "Filter",
                 Join => "Join",
-                BenchRelNodeTyp::List => "List",
             }
         )
     }
@@ -106,35 +85,27 @@ impl Benchmark for InMem {
 
                 let mut children = vec![];
                 for c in e.children.iter() {
-                    children.push(RelNodeRef::new(RelNode {
-                        typ: Placeholder(self.group_ids[*c]),
-                        children: vec![],
-                        predicates: vec![],
-                        data: Some(Value::UInt64(*j as u64)),
-                    }));
+                    children.push(PlanNodeOrGroup::Group(self.group_ids[*c]));
                 }
 
-                let expr = match e.children.len() {
-                    0 => RelNodeRef::new(RelNode {
+                let expr = ArcPlanNode::new(match e.op {
+                    0 => PlanNode {
                         typ: Scan,
                         children: children,
                         predicates: vec![],
-                        data: Some(Value::UInt64(*j as u64)),
-                    }),
-                    1 => RelNodeRef::new(RelNode {
+                    },
+                    1 => PlanNode {
                         typ: Filter,
                         children: children,
                         predicates: vec![],
-                        data: Some(Value::UInt64(*j as u64)),
-                    }),
-                    2 => RelNodeRef::new(RelNode {
+                    },
+                    2 => PlanNode {
                         typ: Join,
                         children: children,
                         predicates: vec![],
-                        data: Some(Value::UInt64(*j as u64)),
-                    }),
+                    },
                     _ => unreachable!(),
-                };
+                });
 
                 match group_id {
                     None => {
@@ -146,7 +117,7 @@ impl Benchmark for InMem {
                     Some(_) => {
                         // add expression to existing group
                         self.memo
-                            .add_expr_to_group(expr, group_id.unwrap())
+                            .add_expr_to_group(PlanNodeOrGroup::PlanNode(expr), group_id.unwrap())
                             .unwrap()
                     }
                 };
@@ -211,13 +182,14 @@ impl InMem {
         if info.visited_exprs.insert(expr_id) {
             let top_expr = self.memo.get_expr_memoed(expr_id);
 
+            // explore children first
+            for c in top_expr.children.iter() {
+                self.explore_group(info, *c);
+            }
+
             // top_matches in optimize_expression task
             let mut _picks = vec![];
             if let Filter = top_expr.typ {
-                // explore children first
-                for c in top_expr.children.iter() {
-                    self.explore_group(info, *c);
-                }
 
                 // match_and_pick_expr in apply_rule task
                 for bot_id in self

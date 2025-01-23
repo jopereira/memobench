@@ -1,14 +1,15 @@
-mod exporm;
 mod generator;
-mod inmem;
-mod inredis;
 mod null;
 
-use crate::exporm::ExperimentalORM;
+#[cfg(feature = "redis")]
+mod inredis;
+
+#[cfg(feature = "optd-original")]
+mod inmem;
+
 use crate::generator::{dump, generate, RawMemo};
-use crate::inmem::InMem;
-use crate::inredis::Redis;
 use crate::null::Null;
+
 use clap::{arg, Parser, Subcommand};
 use hdrhistogram::Histogram;
 use log::info;
@@ -67,18 +68,10 @@ struct Cli {
 #[derive(Subcommand)]
 enum BenchTypes {
     /// optd-like in-memory benchmark
+    #[cfg(feature = "optd-original")]
     InMem,
-    /// optd-experimental/optd-persistent benchmark
-    ExpORM {
-        /// Database connection URL
-        #[arg(long, short = 'D', default_value = "sqlite:./sqlite.db?mode=rwc")]
-        database: String,
-
-        /// Custom SQL for matches
-        #[arg(long, short = 'q')]
-        sql: bool,
-    },
     /// Redis/Valkey benchmark
+    #[cfg(feature = "redis")]
     Redis {
         /// Database connection URL
         #[arg(long, short = 'D', default_value = "redis://127.0.0.1/")]
@@ -109,9 +102,12 @@ fn main() {
 
     let mut benchmark: Box<dyn Benchmark> = match args.benchtype {
         None => Box::new(Null::new().unwrap()),
-        Some(BenchTypes::InMem) => Box::new(InMem::new().unwrap()),
-        Some(BenchTypes::ExpORM { database, sql }) => Box::new(ExperimentalORM::new(database, sql).unwrap()),
-        Some(BenchTypes::Redis { database }) => Box::new(Redis::new(database).unwrap()),
+
+        #[cfg(feature = "optd-original")]
+        Some(BenchTypes::InMem) => Box::new(crate::inmem::InMem::new().unwrap()),
+
+        #[cfg(feature = "redis")]
+        Some(BenchTypes::Redis { database }) => Box::new(crate::inredis::Redis::new(database).unwrap()),
     };
 
     if args.output.is_some() || args.add || args.all {

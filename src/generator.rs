@@ -84,7 +84,7 @@ pub fn generate(ngroups: usize, nexprs: usize, dag: bool, mut rng: ChaCha8Rng) -
             let expr_id = memo.exprs.len();
             exprs.push(expr_id);
 
-            let op = 0; // todo
+            let op = children.len(); // FIXME: more ops?
             memo.exprs.push(RawExpr { op, children });
         }
 
@@ -125,6 +125,7 @@ pub fn generate(ngroups: usize, nexprs: usize, dag: bool, mut rng: ChaCha8Rng) -
 
 pub fn dump(memo: &RawMemo, writer: &mut Box<dyn Write>) -> std::io::Result<()> {
     writeln!(writer, "digraph Memo {{")?;
+    writeln!(writer, "node [colorscheme=set312]")?;
     for (i, g) in memo.groups.iter().enumerate() {
         writeln!(writer, "\"g{}\" [shape=box];", i)?;
         for e in g.exprs.iter() {
@@ -132,7 +133,7 @@ pub fn dump(memo: &RawMemo, writer: &mut Box<dyn Write>) -> std::io::Result<()> 
         }
     }
     for (i, e) in memo.exprs.iter().enumerate() {
-        writeln!(writer, "\"e{}\" [shape=oval];", i)?;
+        writeln!(writer, "\"e{}\" [shape=oval,style=filled,color={}];", i, e.op+1)?;
         for c in e.children.iter() {
             writeln!(writer, "\"e{}\" -> \"g{}\";", i, c)?;
         }
