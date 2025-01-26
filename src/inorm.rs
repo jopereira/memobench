@@ -45,17 +45,17 @@ impl Benchmark for InORM {
 
                 let expr = match e.op {
                     0 => LogicalExpr::Scan(LogicalScan {
-                        table_name: "t1".to_string()
+                        table_name: (*j).to_string(),
                     }),
                     1 => LogicalExpr::Filter(LogicalFilter {
-                        predicate: "a = b".to_string(),
+                        predicate: (*j).to_string(),
                         child: self.group_ids[e.children[0]],
                     }),
                     2 => LogicalExpr::Join(LogicalJoin {
                         join_type: JoinType::Inner,
                         left: self.group_ids[e.children[0]],
                         right: self.group_ids[e.children[1]],
-                        join_cond: "a = b".to_string(),
+                        join_cond: (*j).to_string(),
                     }),
                     _ => unreachable!(),
                 };
@@ -84,7 +84,7 @@ impl Benchmark for InORM {
         Ok(hist)
     }
 
-    fn retrieve(&mut self, mut rng: ChaCha8Rng) -> Result<Histogram<u64>, Box<dyn Error>> {
+    fn retrieve(&mut self, mut rng: ChaCha8Rng, memo: &RawMemo) -> Result<Histogram<u64>, Box<dyn Error>> {
         let mut hist =
             Histogram::<u64>::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?;
 
@@ -97,11 +97,27 @@ impl Benchmark for InORM {
             let group_expressions = self.memo.get_all_logical_exprs_in_group(self.group_ids[g]);
 
             // do something with it
-            _tot += group_expressions.len();
+            let mut ids = vec![];
+            for e in group_expressions {
+                match e.inner {
+                    LogicalExpr::Scan(expr) => {
+                        ids.push(expr.table_name.parse::<usize>().unwrap());
+                    }
+                    LogicalExpr::Filter(expr) => {
+                        ids.push(expr.predicate.parse::<usize>().unwrap());
+                    }
+                    LogicalExpr::Join(expr) => {
+                        ids.push(expr.join_cond.parse::<usize>().unwrap());
+                    }
+                }
+            }
 
             if let Err(_) = hist.record(start.elapsed().as_nanos() as u64) {
                 warn!("histogram overflow")
             }
+
+            ids.sort();
+            assert!(ids == memo.groups[g].exprs)
         }
 
         Ok(hist)

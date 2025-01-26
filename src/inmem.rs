@@ -1,10 +1,9 @@
 use crate::generator::RawMemo;
-use crate::inmem::BenchRelNodeTyp::{Filter, Join, Scan};
 use crate::Benchmark;
 use hdrhistogram::Histogram;
 use log::warn;
 use optd_core::cascades::{ExprId, GroupId, Memo, NaiveMemo};
-use optd_core::nodes::{PlanNode, ArcPlanNode, NodeType, PlanNodeOrGroup};
+use optd_core::nodes::{PlanNode, ArcPlanNode, NodeType, PlanNodeOrGroup, PredNode, Value};
 use rand::Rng;
 use rand_chacha::ChaCha8Rng;
 use std::collections::HashSet;
@@ -12,6 +11,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use crate::inmem::BenchPredTyp::Data;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BenchRelNodeTyp {
@@ -21,7 +21,9 @@ pub enum BenchRelNodeTyp {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum BenchPredTyp {}
+pub enum BenchPredTyp {
+    Data
+}
 
 impl NodeType for BenchRelNodeTyp {
     fn is_logical(&self) -> bool {
@@ -41,9 +43,9 @@ impl Display for BenchRelNodeTyp {
             f,
             "{}",
             match self {
-                Scan => "Scan",
-                Filter => "Filter",
-                Join => "Join",
+                BenchRelNodeTyp::Scan => "Scan",
+                BenchRelNodeTyp::Filter => "Filter",
+                BenchRelNodeTyp::Join => "Join",
             }
         )
     }
@@ -88,21 +90,34 @@ impl Benchmark for InMem {
                     children.push(PlanNodeOrGroup::Group(self.group_ids[*c]));
                 }
 
+                // build expressions with unique predicates
                 let expr = ArcPlanNode::new(match e.op {
                     0 => PlanNode {
-                        typ: Scan,
+                        typ: BenchRelNodeTyp::Scan,
                         children: children,
-                        predicates: vec![],
+                        predicates: vec![ Arc::new(PredNode{
+                            typ: Data,
+                            children: vec![],
+                            data: Some(Value::UInt64(*j as u64)),
+                        }) ],
                     },
                     1 => PlanNode {
-                        typ: Filter,
+                        typ: BenchRelNodeTyp::Filter,
                         children: children,
-                        predicates: vec![],
+                        predicates: vec![ Arc::new(PredNode{
+                            typ: Data,
+                            children: vec![],
+                            data: Some(Value::UInt64(*j as u64)),
+                        }) ],
                     },
                     2 => PlanNode {
-                        typ: Join,
+                        typ: BenchRelNodeTyp::Join,
                         children: children,
-                        predicates: vec![],
+                        predicates: vec![ Arc::new(PredNode{
+                            typ: Data,
+                            children: vec![],
+                            data: Some(Value::UInt64(*j as u64)),
+                        }) ],
                     },
                     _ => unreachable!(),
                 });
@@ -134,7 +149,7 @@ impl Benchmark for InMem {
         Ok(hist)
     }
 
-    fn retrieve(&mut self, mut rng: ChaCha8Rng) -> Result<Histogram<u64>, Box<dyn Error>> {
+    fn retrieve(&mut self, mut rng: ChaCha8Rng, memo: &RawMemo) -> Result<Histogram<u64>, Box<dyn Error>> {
         let mut hist =
             Histogram::<u64>::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?;
 
@@ -147,11 +162,21 @@ impl Benchmark for InMem {
             let group_expressions = self.memo.get_all_exprs_in_group(self.group_ids[g]);
 
             // do something with it
-            _tot += group_expressions.len();
+            let mut ids = vec![];
+            for e in group_expressions {
+                let expr = self.memo.get_expr_memoed(e);
+                let pred = self.memo.get_pred(expr.predicates[0]);
+                if let Some(Value::UInt64(v)) = pred.data {
+                    ids.push(v as usize);
+                }
+            }
 
             if let Err(_) = hist.record(start.elapsed().as_nanos() as u64) {
                 warn!("histogram overflow")
             }
+
+            ids.sort();
+            assert!(ids == memo.groups[g].exprs)
         }
 
         Ok(hist)
@@ -189,7 +214,7 @@ impl InMem {
 
             // top_matches in optimize_expression task
             let mut _picks = vec![];
-            if let Filter = top_expr.typ {
+            if let BenchRelNodeTyp::Filter = top_expr.typ {
 
                 // match_and_pick_expr in apply_rule task
                 for bot_id in self
@@ -198,7 +223,7 @@ impl InMem {
                     .iter()
                 {
                     let bot_expr = self.memo.get_expr_memoed(*bot_id);
-                    if let Join = bot_expr.typ {
+                    if let BenchRelNodeTyp::Join = bot_expr.typ {
                         _picks.push(bot_expr.children.clone());
 
                         let now = Instant::now();

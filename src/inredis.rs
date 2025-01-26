@@ -48,7 +48,7 @@ impl Benchmark for Redis {
                     json!({ // Example operator
                         "type": e.children.len(),
                         "children": e.children,
-                        "moredata": "...",
+                        "moredata": *j as u64,
                     })
                     .to_string(),
                 );
@@ -67,7 +67,7 @@ impl Benchmark for Redis {
         Ok(hist)
     }
 
-    fn retrieve(&mut self, mut rng: ChaCha8Rng) -> Result<Histogram<u64>, Box<dyn Error>> {
+    fn retrieve(&mut self, mut rng: ChaCha8Rng, memo: &RawMemo) -> Result<Histogram<u64>, Box<dyn Error>> {
         let mut hist =
             Histogram::<u64>::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?;
 
@@ -85,14 +85,18 @@ impl Benchmark for Redis {
             let group_expressions: BTreeMap<String, String> = cmd.query(&mut con)?;
 
             // do something with it
+            let mut ids = vec![];
             for (_, json) in group_expressions.iter() {
                 let value: Value = serde_json::from_str(json)?;
-                _tot += value["type"].as_i64().unwrap();
+                ids.push(value["moredata"].as_u64().unwrap() as usize);
             }
 
             if let Err(_) = hist.record(start.elapsed().as_nanos() as u64) {
                 warn!("histogram overflow")
             }
+
+            ids.sort();
+            assert!(ids == memo.groups[g].exprs)
         }
 
         Ok(hist)

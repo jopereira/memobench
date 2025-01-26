@@ -24,7 +24,7 @@ impl Benchmark for Null {
         Ok(hist)
     }
 
-    fn retrieve(&mut self, _: ChaCha8Rng) -> Result<Histogram<u64>, Box<dyn Error>> {
+    fn retrieve(&mut self, _: ChaCha8Rng, _: &RawMemo) -> Result<Histogram<u64>, Box<dyn Error>> {
         let hist =
             Histogram::<u64>::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?;
 

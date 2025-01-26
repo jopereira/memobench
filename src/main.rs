@@ -94,7 +94,7 @@ enum BenchTypes {
 
 pub trait Benchmark {
     fn add(&mut self, memo: &RawMemo) -> Result<Histogram<u64>, Box<dyn Error>>;
-    fn retrieve(&mut self, rng: ChaCha8Rng) -> Result<Histogram<u64>, Box<dyn Error>>;
+    fn retrieve(&mut self, rng: ChaCha8Rng, memo: &RawMemo) -> Result<Histogram<u64>, Box<dyn Error>>;
     fn match_rules(&mut self) -> Result<Histogram<u64>, Box<dyn Error>>;
 }
 
@@ -126,33 +126,31 @@ fn main() {
         Some(BenchTypes::Redis { database }) => Box::new(crate::inredis::Redis::new(database).unwrap()),
     };
 
-    if args.output.is_some() || args.add || args.all {
-        let memo = generate(
-            args.groups,
-            args.exprs,
-            args.dag,
-            ChaCha8Rng::seed_from_u64(seed),
-        );
+    let memo = generate(
+        args.groups,
+        args.exprs,
+        args.dag,
+        ChaCha8Rng::seed_from_u64(seed),
+    );
 
-        if let Some(path) = args.output {
-            let mut writer = match &path[..] {
-                "-" => Box::new(stdout()),
-                path => Box::new(File::create(&path).unwrap()) as Box<dyn Write>,
-            };
-            dump(&memo, &mut writer).unwrap();
-        }
+    if let Some(path) = args.output {
+        let mut writer = match &path[..] {
+            "-" => Box::new(stdout()),
+            path => Box::new(File::create(&path).unwrap()) as Box<dyn Write>,
+        };
+        dump(&memo, &mut writer).unwrap();
+    }
 
-        if args.add || args.all {
-            let now = Instant::now();
-            let hist = benchmark.add(&memo).expect("error while running add test");
-            log_summary(hist, "add", now.elapsed());
-        }
+    if args.add || args.all {
+        let now = Instant::now();
+        let hist = benchmark.add(&memo).expect("error while running add test");
+        log_summary(hist, "add", now.elapsed());
     }
 
     if args.retrieve || args.all {
         let now = Instant::now();
         let hist = benchmark
-            .retrieve(ChaCha8Rng::seed_from_u64(seed + 1000))
+            .retrieve(ChaCha8Rng::seed_from_u64(seed + 1000), &memo)
             .expect("error while runnning retrieve test");
         log_summary(hist, "retrieve", now.elapsed());
     }
