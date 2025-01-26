@@ -7,6 +7,9 @@ mod inredis;
 #[cfg(feature = "optd-original")]
 mod inmem;
 
+#[cfg(feature = "optd")]
+mod inorm;
+
 use crate::generator::{dump, generate, RawMemo};
 use crate::null::Null;
 
@@ -67,9 +70,19 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum BenchTypes {
-    /// optd-like in-memory benchmark
+    /// optd in ORM
+    #[cfg(feature = "optd")]
+    ORM {
+        /// Database connection URL
+        #[arg(long, short = 'D', default_value = ":memory:")]
+        database: String,
+        /// Run migration
+        #[arg(long, short = 'M', default_value = "false")]
+        migration: bool,
+    },
+    /// optd-original in-memory benchmark
     #[cfg(feature = "optd-original")]
-    InMem,
+    Mem,
     /// Redis/Valkey benchmark
     #[cfg(feature = "redis")]
     Redis {
@@ -103,8 +116,11 @@ fn main() {
     let mut benchmark: Box<dyn Benchmark> = match args.benchtype {
         None => Box::new(Null::new().unwrap()),
 
+        #[cfg(feature = "optd")]
+        Some(BenchTypes::ORM { database, migration }) => Box::new(crate::inorm::InORM::new(&database, migration).unwrap()),
+
         #[cfg(feature = "optd-original")]
-        Some(BenchTypes::InMem) => Box::new(crate::inmem::InMem::new().unwrap()),
+        Some(BenchTypes::Mem) => Box::new(crate::inmem::InMem::new().unwrap()),
 
         #[cfg(feature = "redis")]
         Some(BenchTypes::Redis { database }) => Box::new(crate::inredis::Redis::new(database).unwrap()),
