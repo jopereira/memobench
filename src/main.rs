@@ -10,7 +10,7 @@ mod inmem;
 #[cfg(feature = "optd")]
 mod inorm;
 
-use crate::generator::{dump, generate, RawMemo};
+use crate::generator::RawMemo;
 use crate::null::Null;
 
 use clap::{arg, Parser, Subcommand};
@@ -126,7 +126,7 @@ fn main() {
         Some(BenchTypes::Redis { database }) => Box::new(crate::inredis::Redis::new(database).unwrap()),
     };
 
-    let memo = generate(
+    let memo = RawMemo::new(
         args.groups,
         args.exprs,
         args.dag,
@@ -138,7 +138,7 @@ fn main() {
             "-" => Box::new(stdout()),
             path => Box::new(File::create(&path).unwrap()) as Box<dyn Write>,
         };
-        dump(&memo, &mut writer).unwrap();
+        memo.dump(&mut writer).unwrap();
     }
 
     if args.add || args.all {
