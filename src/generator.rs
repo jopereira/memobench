@@ -7,11 +7,13 @@ use std::collections::HashSet;
 use std::io::Write;
 use std::time::Instant;
 
+#[derive(Clone)]
 pub struct RawExpr {
     pub op: usize,
     pub children: Vec<usize>,
 }
 
+#[derive(Clone)]
 pub struct RawGroup {
     pub exprs: Vec<usize>,
 }
@@ -124,6 +126,38 @@ impl RawMemo {
         memo
     }
 
+    pub fn shuffle(&self, chunk: usize, merge: bool) -> RawMemo {
+        assert!(chunk > 1);
+
+        let mut groups = self.groups.clone();
+        let mut i = 0;
+
+        while i < groups.len() {
+            let g = &groups[i];
+            if g.exprs.len() > chunk {
+                let upd = g.exprs[..chunk].to_vec();
+                let rest = if merge {
+                    // trigger merge 1,2,3,4,5,6,7 --> 1,2,3 + 4,5,6 + 7,1,4
+                    let mut v = g.exprs[chunk..].to_vec();
+                    v.push(g.exprs[0]);
+                    v
+                } else {
+                    // don't trigger merge 1,2,3,4,5,6,7 --> 1,2,3 - 3,4,5, - 5,6,7
+                    g.exprs[chunk-1..].to_vec()
+                };
+                groups[i].exprs = upd;
+                groups.push(RawGroup{ exprs: rest })
+            }
+            i = i+1;
+        }
+
+        RawMemo {
+            exprs: self.exprs.clone(),
+            groups: groups,
+            entry: self.entry,
+        }
+    }
+
     pub fn dump(&self, writer: &mut Box<dyn Write>) -> std::io::Result<()> {
         writeln!(writer, "digraph Memo {{")?;
         writeln!(writer, "node [colorscheme=set312]")?;
@@ -140,5 +174,9 @@ impl RawMemo {
             }
         }
         writeln!(writer, "}}")
+    }
+
+    pub fn len(&self) -> usize {
+        self.exprs.len()
     }
 }

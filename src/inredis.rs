@@ -75,7 +75,7 @@ impl Benchmark for Redis {
 
         let mut _tot = 0;
         for _ in 0..1000 {
-            let g = rng.gen_range(0..self.ngroups);
+            let g = rng.gen_range(0..memo.groups.len());
 
             let start = Instant::now();
 

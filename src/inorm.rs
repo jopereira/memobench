@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::time::{Duration, Instant};
 use hdrhistogram::Histogram;
-use log::warn;
+use log::{debug, warn};
 use optd::storage::models::common::JoinType;
 use optd::storage::models::logical_expr::{LogicalExpr, LogicalExprId, LogicalExprWithId};
 use optd::storage::models::logical_operators::{LogicalFilter, LogicalJoin, LogicalScan};
@@ -90,7 +90,7 @@ impl Benchmark for InORM {
 
         let mut _tot = 0;
         for _ in 0..1000 {
-            let g = rng.gen_range(0..self.group_ids.len());
+            let g = rng.gen_range(0..memo.groups.len());
 
             let start = Instant::now();
 
@@ -130,6 +130,7 @@ impl Benchmark for InORM {
             hist: Histogram::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?,
             last: Instant::now(),
         };
+
         self.explore_group(&mut info, self.entry);
 
         Ok(info.hist)
@@ -144,6 +145,15 @@ struct MatchInfo {
 }
 
 impl InORM {
+    fn explore_group(&mut self, info: &mut MatchInfo, group_id: RelGroupId) {
+        if info.visited_groups.insert(group_id) {
+            let exprs = self.memo.get_all_logical_exprs_in_group(group_id);
+            for expr in exprs {
+                self.optimize_expression(info, expr);
+            }
+        }
+    }
+
     fn optimize_expression(&mut self, info: &mut MatchInfo, top_expr: LogicalExprWithId) {
         if info.visited_exprs.insert(top_expr.id) {
 
@@ -160,7 +170,7 @@ impl InORM {
             }
 
             // top_matches in optimize_expression task
-            let mut _picks = vec![];
+            let mut picks = vec![];
             if let LogicalExpr::Filter(f_expr) = top_expr.inner {
 
                 // match_and_pick_expr in apply_rule task
@@ -170,7 +180,7 @@ impl InORM {
                     .iter()
                 {
                     if let LogicalExpr::Join(j_expr) = &bot_expr.inner {
-                        _picks.push(vec![j_expr.left, j_expr.right]);
+                        picks.push(vec![(j_expr.left, j_expr.right)]);
 
                         let now = Instant::now();
                         if let Err(_) = info
@@ -183,15 +193,7 @@ impl InORM {
                     }
                 }
             }
-        }
-    }
-
-    fn explore_group(&mut self, info: &mut MatchInfo, group_id: RelGroupId) {
-        if info.visited_groups.insert(group_id) {
-            let exprs = self.memo.get_all_logical_exprs_in_group(group_id);
-            for expr in exprs {
-                self.optimize_expression(info, expr);
-            }
+            debug!("found matches {:?}", picks)
         }
     }
 }

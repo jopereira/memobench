@@ -13,7 +13,7 @@ mod inorm;
 use crate::generator::RawMemo;
 use crate::null::Null;
 
-use clap::{arg, Parser, Subcommand};
+use clap::{arg, Parser, Subcommand, ValueEnum};
 use hdrhistogram::Histogram;
 use log::info;
 use log::LevelFilter::{Info, Warn};
@@ -25,6 +25,9 @@ use std::io::stdout;
 use std::io::Write;
 use std::time::Duration;
 use tokio::time::Instant;
+
+#[derive(Clone,ValueEnum,PartialEq)]
+enum ShuffleStrategy { None, Lookup, Merge }
 
 #[derive(Parser)]
 struct Cli {
@@ -63,6 +66,18 @@ struct Cli {
     /// Run retrieval workload
     #[arg(long = "match", short = 'm')]
     match_rule: bool,
+
+    /// Output CSV summary
+    #[arg(long = "csv", short = 'c')]
+    csv: bool,
+
+    /// Shuffle add workload
+    #[arg(long = "shuffle", short = 'u', default_value = "none")]
+    shuffle: ShuffleStrategy,
+
+    /// Average number of expressions per group
+    #[arg(long = "shuffle-size", short = 'U', default_value_t = 2)]
+    chunk: usize,
 
     #[command(subcommand)]
     benchtype: Option<BenchTypes>,
@@ -133,6 +148,10 @@ fn main() {
         ChaCha8Rng::seed_from_u64(seed),
     );
 
+    if args.csv {
+        print!("{},{},{}", args.groups, args.exprs, memo.len());
+    }
+
     if let Some(path) = args.output {
         let mut writer = match &path[..] {
             "-" => Box::new(stdout()),
@@ -143,8 +162,20 @@ fn main() {
 
     if args.add || args.all {
         let now = Instant::now();
-        let hist = benchmark.add(&memo).expect("error while running add test");
-        log_summary(hist, "add", now.elapsed());
+        let hist = match args.shuffle {
+            ShuffleStrategy::None => {
+                benchmark.add(&memo)
+            }
+            ShuffleStrategy::Lookup => {
+                let shuffled = memo.shuffle(args.chunk, false);
+                benchmark.add(&shuffled)
+            }
+            ShuffleStrategy::Merge => {
+                let shuffled = memo.shuffle(args.chunk, true);
+                benchmark.add(&shuffled)
+            }
+        }.expect("error while running add test");
+        log_summary(hist, "add", now.elapsed(), args.csv);
     }
 
     if args.retrieve || args.all {
@@ -152,7 +183,7 @@ fn main() {
         let hist = benchmark
             .retrieve(ChaCha8Rng::seed_from_u64(seed + 1000), &memo)
             .expect("error while runnning retrieve test");
-        log_summary(hist, "retrieve", now.elapsed());
+        log_summary(hist, "retrieve", now.elapsed(), args.csv);
     }
 
     if args.match_rule || args.all {
@@ -160,11 +191,15 @@ fn main() {
         let hist = benchmark
             .match_rules()
             .expect("error while runnning match test");
-        log_summary(hist, "match", now.elapsed());
+        log_summary(hist, "match", now.elapsed(), args.csv);
+    }
+
+    if args.csv {
+        println!("");
     }
 }
 
-fn log_summary(hist: Histogram<u64>, workload: &str, tot: Duration) {
+fn log_summary(hist: Histogram<u64>, workload: &str, tot: Duration, csv: bool) {
     info!(target: "memobench::workload", "{} : {} samples : min={:?} mean={:?} max={:?} ({} ops/s - {:?})",
             workload,
             hist.len(), Duration::from_nanos(hist.min()),
@@ -172,4 +207,7 @@ fn log_summary(hist: Histogram<u64>, workload: &str, tot: Duration) {
             Duration::from_nanos(hist.max()),
             1.0e9/hist.mean(), tot
     );
+    if csv {
+        print!(",{},{},{},{},{}", hist.min(), hist.mean(), hist.max(), 1.0e9 / hist.mean(), tot.as_nanos());
+    }
 }
