@@ -16,6 +16,7 @@ pub struct RawExpr {
 #[derive(Clone)]
 pub struct RawGroup {
     pub exprs: Vec<usize>,
+    pub id: usize,
 }
 
 pub struct RawMemo {
@@ -77,6 +78,7 @@ impl RawMemo {
                         children.push(memo.groups.len());
                         memo.groups.push(RawGroup {
                             exprs: vec![memo.exprs.len()],
+                            id: memo.groups.len(),
                         });
                         memo.exprs.push(RawExpr {
                             op: 0,
@@ -93,7 +95,7 @@ impl RawMemo {
 
             if ngen > 0 {
                 let group_id = memo.groups.len();
-                memo.groups.push(RawGroup { exprs });
+                memo.groups.push(RawGroup { exprs: exprs, id: group_id });
 
                 // While we don't have enough groups, collect operands for future expressions
                 if group_id < ngroups && dag {
@@ -134,6 +136,7 @@ impl RawMemo {
 
         while i < groups.len() {
             let g = &groups[i];
+            let gid = g.id;
             if g.exprs.len() > chunk {
                 let upd = g.exprs[..chunk].to_vec();
                 let rest = if merge {
@@ -146,7 +149,7 @@ impl RawMemo {
                     g.exprs[chunk-1..].to_vec()
                 };
                 groups[i].exprs = upd;
-                groups.push(RawGroup{ exprs: rest })
+                groups.push(RawGroup{ exprs: rest, id: gid })
             }
             i = i+1;
         }

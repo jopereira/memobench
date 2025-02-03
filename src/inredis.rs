@@ -96,7 +96,7 @@ impl Benchmark for Redis {
             }
 
             ids.sort();
-            assert!(ids == memo.groups[g].exprs)
+            assert!(ids == memo.groups[g].exprs, "incorrect memo (use --shuffle none!)")
         }
 
         Ok(hist)

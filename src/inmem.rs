@@ -137,7 +137,11 @@ impl Benchmark for InMem {
                     }
                 };
             }
-            self.group_ids.push(group_id.unwrap());
+            if g.id >= self.group_ids.len() {
+                self.group_ids.push(group_id.unwrap());
+            } else {
+                self.group_ids[g.id] = group_id.unwrap();
+            }
 
             if let Err(_) = hist.record(start.elapsed().as_nanos() as u64) {
                 warn!("histogram overflow")
