@@ -38,22 +38,33 @@ impl Benchmark for Redis {
         for (i, g) in memo.groups.iter().enumerate() {
             let start = Instant::now();
 
-            let mut cmd = redis::cmd("HSET");
-            cmd.arg(i.to_string());
-
-            for j in g.exprs.iter() {
+            let exprs: Vec<String> = g.exprs.iter().map(|j| {
                 let e = &memo.exprs[*j];
+                json!({
+                    "type": e.children.len(),
+                    "children": e.children,
+                    "moredata": *j as u64,
+                }).to_string()
+            }).collect();
 
-                cmd.arg(j.to_string()).arg(
-                    json!({ // Example operator
-                        "type": e.children.len(),
-                        "children": e.children,
-                        "moredata": *j as u64,
-                    })
-                    .to_string(),
-                );
+            let mut gid = i.to_string();
+            for e in exprs.iter() {
+                let mut cmd = redis::cmd("SET");
+                cmd.arg(e)
+                    .arg(gid.clone())
+                    .arg("NX")
+                    .arg("GET");
+                let result: redis::Value = cmd.query(&mut con)?;
+                if let Ok(id) = redis::from_redis_value::<String>(&result) {
+                    gid = id;
+                }
             }
 
+            let mut cmd = redis::cmd("HSET");
+            cmd.arg(gid);
+            for (j,eid) in g.exprs.iter().enumerate() {
+                cmd.arg(eid.to_string()).arg(exprs[j].clone());
+            }
             cmd.exec(&mut con)?;
 
             if let Err(_) = hist.record(start.elapsed().as_nanos() as u64) {
@@ -96,7 +107,7 @@ impl Benchmark for Redis {
             }
 
             ids.sort();
-            assert!(ids == memo.groups[g].exprs, "incorrect memo (use --shuffle none!)")
+            assert!(ids == memo.groups[g].exprs, "incorrect memo (do not use --shuffle merge!)")
         }
 
         Ok(hist)
