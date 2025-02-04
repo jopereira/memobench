@@ -4,7 +4,7 @@ Generates Cascades-style memo-like data for experimentation. Although the genera
 
 ## Build
 
-1. Clone memobench, [optd](https://github.com/cmu-db/optd), and [optd-experimental](https://github.com/cmu-db/optd-experimental) in the same directory.
+1. Clone memobench, [optd](https://github.com/cmu-db/optd), and [optd-original](https://github.com/cmu-db/optd-original) in the same directory.
 2. cd memobench; cargo build --all-features
 
 ## Examples
@@ -44,7 +44,8 @@ There are currently three stages: add (that generates data and populates the mem
 
 Data generation and the add stage have several options:
 
-- Tree mode (default), generating a structure that looks like a relational expression inserted at the start, or DAG mode, generating a structure with multiple options that mimics the state of the memo after optimization is running for some time. Tree mode works best with -e1.
+- Select target number of groups and expressions in each group.
+- Tree mode (default), generating a structure that looks like a relational expression inserted at the start, or DAG mode, generating a structure with multiple equivalent expressions in each group that mimics the state of the memo after optimization is running for some time. Tree mode works best with -e1.
 - Set target custom number of groups and average expressions per group. The final result might have slightly different number of expressions and groups due to randomness and to avoid dangling expressions.
 - Use a custom seed to repeat a given run. This allows running the exact same data on multiple implementations and reproducible debugging.
 - Shuffling the groups. By default, groups are inserted sequentially, which does not really exercise the memo. The lookup mode requires that the memo returns existing duplicate expressions, but does not trigger groups merges. The merge mode, makes sure that group merges (and recursive group merges) are needed. The latest is likely to be more useful as a torture test than as a benchmark.
