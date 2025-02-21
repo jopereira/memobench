@@ -91,9 +91,6 @@ enum BenchTypes {
         /// Database connection URL
         #[arg(long, short = 'D', default_value = ":memory:")]
         database: String,
-        /// Run migration
-        #[arg(long, short = 'M', default_value = "false")]
-        migration: bool,
     },
     /// optd-original in-memory benchmark
     #[cfg(feature = "optd-original")]
@@ -132,7 +129,7 @@ fn main() {
         None => Box::new(Null::new().unwrap()),
 
         #[cfg(feature = "optd")]
-        Some(BenchTypes::ORM { database, migration }) => Box::new(crate::inorm::InORM::new(&database, migration).unwrap()),
+        Some(BenchTypes::ORM { database }) => Box::new(crate::inorm::InORM::new(&database).unwrap()),
 
         #[cfg(feature = "optd-original")]
         Some(BenchTypes::Mem) => Box::new(crate::inmem::InMem::new().unwrap()),

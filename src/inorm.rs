@@ -1,33 +1,38 @@
 use std::collections::HashSet;
 use std::error::Error;
+use std::ops::Deref;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use hdrhistogram::Histogram;
 use log::{debug, warn};
-use optd::storage::models::common::JoinType;
-use optd::storage::models::logical_expr::{LogicalExpr, LogicalExprId, LogicalExprWithId};
-use optd::storage::models::logical_operators::{LogicalFilter, LogicalJoin, LogicalScan};
-use optd::storage::models::rel_group::RelGroupId;
-use optd::storage::StorageManager;
+use optd_core::cascades::expressions::{LogicalExpression, LogicalExpressionId};
+use optd_core::cascades::groups::{RelationalGroupId, ScalarGroupId};
+use optd_core::cascades::memo::Memoize;
+use optd_core::operators::relational::logical::filter::Filter;
+use optd_core::operators::relational::logical::join::Join;
+use optd_core::operators::relational::logical::scan::Scan;
+use optd_core::operators::scalar::constants::Constant;
+use optd_core::operators::scalar::ScalarOperator;
+use optd_core::storage::memo::SqliteMemo;
+use optd_core::values::OptdValue;
 use rand::Rng;
 use rand_chacha::ChaCha8Rng;
+use tokio::runtime::Runtime;
 use crate::Benchmark;
 use crate::generator::RawMemo;
 
 pub struct InORM {
-    memo: StorageManager,
-    group_ids: Vec<RelGroupId>,
-    entry: RelGroupId,
+    memo: SqliteMemo,
+    group_ids: Vec<RelationalGroupId>,
+    entry: RelationalGroupId,
 }
 
 impl InORM {
-    pub fn new(database: &str, migration: bool) -> Result<Self,Box<dyn Error>> {
-        let mut storage = StorageManager::new(database)?;
-
-        if migration || database == ":memory:" {
-            storage.migration_run()?;
-        }
-
-        Ok(InORM { memo: storage, group_ids: vec![], entry: RelGroupId(0) })
+    pub fn new(database: &str) -> Result<Self,Box<dyn Error>> {
+        let runtime = Runtime::new().unwrap();
+        runtime.block_on(async {
+            Ok(InORM { memo: SqliteMemo::new(database).await?, group_ids: vec![], entry: RelationalGroupId(0) })
+        })
     }
 }
 
@@ -36,95 +41,103 @@ impl Benchmark for InORM {
         let mut hist =
             Histogram::<u64>::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?;
 
-        for g in memo.groups.iter() {
-            let start = Instant::now();
-            let mut group_id = None;
+        let runtime = Runtime::new().unwrap();
+        runtime.block_on(async {
+            for g in memo.groups.iter() {
+                let start = Instant::now();
+                let mut group_id = None;
 
-            for j in g.exprs.iter() {
-                let e = &memo.exprs[*j];
+                for j in g.exprs.iter() {
+                    let e = &memo.exprs[*j];
 
-                let expr = match e.op {
-                    0 => LogicalExpr::Scan(LogicalScan {
-                        table_name: (*j).to_string(),
-                    }),
-                    1 => LogicalExpr::Filter(LogicalFilter {
-                        predicate: (*j).to_string(),
-                        child: self.group_ids[e.children[0]],
-                    }),
-                    2 => LogicalExpr::Join(LogicalJoin {
-                        join_type: JoinType::Inner,
-                        left: self.group_ids[e.children[0]],
-                        right: self.group_ids[e.children[1]],
-                        join_cond: (*j).to_string(),
-                    }),
-                    _ => unreachable!(),
-                };
+                    let expr = match e.op {
+                        0 => LogicalExpression::Scan(Scan {
+                            table_name: OptdValue::String((*j).to_string()),
+                            predicate: self.predicate_from_val(*j).await,
+                        }),
+                        1 => LogicalExpression::Filter(Filter {
+                            predicate: self.predicate_from_val(*j).await,
+                            child: self.group_ids[e.children[0]],
+                        }),
+                        2 => LogicalExpression::Join(Join {
+                            join_type: OptdValue::Int64(0),
+                            left: self.group_ids[e.children[0]],
+                            right: self.group_ids[e.children[1]],
+                            condition: self.predicate_from_val(*j).await,
+                        }),
+                        _ => unreachable!(),
+                    };
 
-                match group_id {
-                    None => {
-                        // first expression in group, create group
-                        let (_, e) = self.memo.add_logical_expr(expr);
-                        group_id = Some(e);
-                    }
-                    Some(id) => {
-                        // add expression to existing group
-                        self.memo.add_logical_expr_to_group(expr, id);
-                    }
-                };
+                    match group_id {
+                        None => {
+                            // first expression in group, create group
+                            let e = self.memo.add_logical_expr(&expr).await?;
+                            group_id = Some(e);
+                        }
+                        Some(id) => {
+                            // add expression to existing group
+                            self.memo.add_logical_expr_to_group(&expr, id).await?;
+                        }
+                    };
+                }
+                if g.id >= self.group_ids.len() {
+                    self.group_ids.push(group_id.unwrap());
+                } else {
+                    self.group_ids[g.id] = group_id.unwrap();
+                }
+
+                if let Err(_) = hist.record(start.elapsed().as_nanos() as u64) {
+                    warn!("histogram overflow")
+                }
             }
-            if g.id >= self.group_ids.len() {
-                self.group_ids.push(group_id.unwrap());
-            } else {
-                self.group_ids[g.id] = group_id.unwrap();
-            }
 
-            if let Err(_) = hist.record(start.elapsed().as_nanos() as u64) {
-                warn!("histogram overflow")
-            }
-        }
+            self.entry = self.group_ids[memo.entry];
 
-        self.entry = self.group_ids[memo.entry];
-
-        Ok(hist)
+            Ok(hist)
+        })
     }
 
     fn retrieve(&mut self, mut rng: ChaCha8Rng, memo: &RawMemo) -> Result<Histogram<u64>, Box<dyn Error>> {
         let mut hist =
             Histogram::<u64>::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?;
 
-        let mut _tot = 0;
-        for _ in 0..1000 {
-            let g = rng.gen_range(0..memo.groups.len());
+        let runtime = Runtime::new().unwrap();
+        runtime.block_on(async {
+            let mut _tot = 0;
+            for _ in 0..1000 {
+                let g = rng.gen_range(0..memo.groups.len());
 
-            let start = Instant::now();
+                let start = Instant::now();
 
-            let group_expressions = self.memo.get_all_logical_exprs_in_group(self.group_ids[g]);
+                let group_expressions = self.memo.get_all_logical_exprs_in_group(self.group_ids[g]).await?;
 
-            // do something with it
-            let mut ids = vec![];
-            for e in group_expressions {
-                match e.inner {
-                    LogicalExpr::Scan(expr) => {
-                        ids.push(expr.table_name.parse::<usize>().unwrap());
-                    }
-                    LogicalExpr::Filter(expr) => {
-                        ids.push(expr.predicate.parse::<usize>().unwrap());
-                    }
-                    LogicalExpr::Join(expr) => {
-                        ids.push(expr.join_cond.parse::<usize>().unwrap());
+                // do something with it
+                let mut ids = vec![];
+                for (_,expr) in group_expressions {
+                    match expr.deref() {
+                        LogicalExpression::Scan(expr) => {
+                            ids.push(self.val_from_predicate(expr.predicate).await);
+                        }
+                        LogicalExpression::Filter(expr) => {
+                            ids.push(self.val_from_predicate(expr.predicate).await);
+                        }
+                        LogicalExpression::Join(expr) => {
+                            ids.push(self.val_from_predicate(expr.condition).await);
+                        }
+                        _ => {}
                     }
                 }
+
+                if let Err(_) = hist.record(start.elapsed().as_nanos() as u64) {
+                    warn!("histogram overflow")
+                }
+
+                ids.sort();
+                assert!(ids == memo.groups[g].exprs, "incorrect memo (do not use --shuffle merge!)")
             }
 
-            if let Err(_) = hist.record(start.elapsed().as_nanos() as u64) {
-                warn!("histogram overflow")
-            }
-
-            ids.sort();
-            assert!(ids == memo.groups[g].exprs, "incorrect memo (do not use --shuffle merge!)")
-        }
-
-        Ok(hist)
+            Ok(hist)
+        })
     }
 
     fn match_rules(&mut self) -> Result<Histogram<u64>, Box<dyn Error>> {
@@ -135,55 +148,77 @@ impl Benchmark for InORM {
             last: Instant::now(),
         };
 
-        self.explore_group(&mut info, self.entry);
+        let runtime = Runtime::new().unwrap();
+        runtime.block_on(async {
+            self.explore_group(&mut info, self.entry).await;
 
-        Ok(info.hist)
+            Ok(info.hist)
+        })
     }
 }
 
 struct MatchInfo {
-    visited_exprs: HashSet<LogicalExprId>,
-    visited_groups: HashSet<RelGroupId>,
+    visited_exprs: HashSet<LogicalExpressionId>,
+    visited_groups: HashSet<RelationalGroupId>,
     hist: Histogram<u64>,
     last: Instant,
 }
 
 impl InORM {
-    fn explore_group(&mut self, info: &mut MatchInfo, group_id: RelGroupId) {
+    async fn predicate_from_val(&self, value: usize) -> ScalarGroupId {
+        self.memo.add_scalar_expr(
+            &ScalarOperator::Constant(
+                Constant::new(OptdValue::Int64(value as i64)))).await.unwrap()
+    }
+
+    async fn val_from_predicate(&self, sid: ScalarGroupId) -> usize {
+        if let ScalarOperator::Constant(c) = &self.memo.get_all_scalar_exprs_in_group(sid).await.unwrap()[0].1.deref() {
+            if let OptdValue::Int64(v) = c.value {
+                v as usize
+            } else {
+                panic!("invalid value")
+            }
+        } else {
+            panic!("invalid predicate");
+        }
+    }
+
+    async fn explore_group(&mut self, info: &mut MatchInfo, group_id: RelationalGroupId) {
         if info.visited_groups.insert(group_id) {
-            let exprs = self.memo.get_all_logical_exprs_in_group(group_id);
-            for expr in exprs {
-                self.optimize_expression(info, expr);
+            let exprs = self.memo.get_all_logical_exprs_in_group(group_id).await.unwrap();
+            for (id,expr) in exprs {
+                Box::pin(self.optimize_expression(info, id, expr)).await;
             }
         }
     }
 
-    fn optimize_expression(&mut self, info: &mut MatchInfo, top_expr: LogicalExprWithId) {
-        if info.visited_exprs.insert(top_expr.id) {
+    async fn optimize_expression(&mut self, info: &mut MatchInfo, top_id: LogicalExpressionId, top_expr: Arc<LogicalExpression>) {
+        if info.visited_exprs.insert(top_id) {
 
             // explore children first
-            match &top_expr.inner {
-                LogicalExpr::Scan(_) => {}
-                LogicalExpr::Filter(expr) => {
-                    self.explore_group(info, expr.child)
+            match top_expr.deref() {
+                LogicalExpression::Scan(_) => {}
+                LogicalExpression::Filter(expr) => {
+                    self.explore_group(info, expr.child).await
                 }
-                LogicalExpr::Join(expr) => {
-                    self.explore_group(info, expr.left);
-                    self.explore_group(info, expr.right);
+                LogicalExpression::Join(expr) => {
+                    self.explore_group(info, expr.left).await;
+                    self.explore_group(info, expr.right).await;
                 }
+                _ => {}
             }
 
             // top_matches in optimize_expression task
             let mut picks = vec![];
-            if let LogicalExpr::Filter(f_expr) = top_expr.inner {
+            if let LogicalExpression::Filter(f_expr) = top_expr.deref() {
 
                 // match_and_pick_expr in apply_rule task
-                for bot_expr in self
+                for (_,bot_expr) in self
                     .memo
                     .get_all_logical_exprs_in_group(f_expr.child)
-                    .iter()
+                    .await.unwrap().iter()
                 {
-                    if let LogicalExpr::Join(j_expr) = &bot_expr.inner {
+                    if let LogicalExpression::Join(j_expr) = &bot_expr.deref() {
                         picks.push(vec![(j_expr.left, j_expr.right)]);
 
                         let now = Instant::now();
