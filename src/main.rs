@@ -43,9 +43,13 @@ struct Cli {
     #[arg(long, short = 'S')]
     seed: Option<u64>,
 
-    /// Output to .dot file
-    #[arg(long, short = 'o', value_hint = clap::ValueHint::DirPath)]
-    output: Option<String>,
+    /// Output raw data to .dot file
+    #[arg(long, value_hint = clap::ValueHint::DirPath)]
+    raw_dot: Option<String>,
+
+    /// Output raw data to .csv file
+    #[arg(long, value_hint = clap::ValueHint::DirPath)]
+    raw_csv: Option<String>,
 
     /// Generate a DAG instead of a tree
     #[arg(long, short = 'd')]
@@ -67,7 +71,7 @@ struct Cli {
     #[arg(long = "match", short = 'm')]
     match_rule: bool,
 
-    /// Output CSV summary
+    /// CSV summary
     #[arg(long = "csv", short = 'c')]
     csv: bool,
 
@@ -149,29 +153,37 @@ fn main() {
         print!("{},{},{}", args.groups, args.exprs, memo.len());
     }
 
-    if let Some(path) = args.output {
+    if let Some(path) = args.raw_dot {
         let mut writer = match &path[..] {
             "-" => Box::new(stdout()),
             path => Box::new(File::create(&path).unwrap()) as Box<dyn Write>,
         };
-        memo.dump(&mut writer).unwrap();
+        memo.dump_dot(&mut writer).unwrap();
+    }
+
+    let shuffled = match args.shuffle {
+        ShuffleStrategy::None => {
+            memo.clone()
+        }
+        ShuffleStrategy::Lookup => {
+            memo.shuffle(args.chunk, false)
+        }
+        ShuffleStrategy::Merge => {
+            memo.shuffle(args.chunk, true)
+        }
+    };
+
+    if let Some(path) = args.raw_csv {
+        let mut writer = match &path[..] {
+            "-" => Box::new(stdout()),
+            path => Box::new(File::create(&path).unwrap()) as Box<dyn Write>,
+        };
+        shuffled.dump_csv(&mut writer).unwrap();
     }
 
     if args.add || args.all {
         let now = Instant::now();
-        let hist = match args.shuffle {
-            ShuffleStrategy::None => {
-                benchmark.add(&memo)
-            }
-            ShuffleStrategy::Lookup => {
-                let shuffled = memo.shuffle(args.chunk, false);
-                benchmark.add(&shuffled)
-            }
-            ShuffleStrategy::Merge => {
-                let shuffled = memo.shuffle(args.chunk, true);
-                benchmark.add(&shuffled)
-            }
-        }.expect("error while running add test");
+        let hist = benchmark.add(&shuffled).expect("error while running add test");
         log_summary(hist, "add", now.elapsed(), args.csv);
     }
 

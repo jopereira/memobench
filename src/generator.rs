@@ -19,6 +19,7 @@ pub struct RawGroup {
     pub id: usize,
 }
 
+#[derive(Clone)]
 pub struct RawMemo {
     pub exprs: Vec<RawExpr>,
     pub groups: Vec<RawGroup>,
@@ -161,7 +162,7 @@ impl RawMemo {
         }
     }
 
-    pub fn dump(&self, writer: &mut Box<dyn Write>) -> std::io::Result<()> {
+    pub fn dump_dot(&self, writer: &mut Box<dyn Write>) -> std::io::Result<()> {
         writeln!(writer, "digraph Memo {{")?;
         writeln!(writer, "node [colorscheme=set312]")?;
         for (i, g) in self.groups.iter().enumerate() {
@@ -178,6 +179,23 @@ impl RawMemo {
         }
         writeln!(writer, "}}")
     }
+
+    pub fn dump_csv(&self, writer: &mut Box<dyn Write>) -> std::io::Result<()> {
+        writeln!(writer, "gid,eid,op,left,right")?;
+        for (i, g) in self.groups.iter().enumerate() {
+            for e in g.exprs.iter() {
+                let expr = &self.exprs[*e];
+                match expr.op {
+                    0 => writeln!(writer, "{},{},0,-1,-1", i, e)?,
+                    1 => writeln!(writer, "{},{},1,{},-1", i, e, expr.children[0])?,
+                    2 => writeln!(writer, "{},{},2,{},{}", i, e, expr.children[0], expr.children[1])?,
+                    _ => panic!("unknown operator"),
+                }
+            }
+        }
+        Ok(())
+    }
+
 
     pub fn len(&self) -> usize {
         self.exprs.len()

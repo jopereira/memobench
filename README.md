@@ -56,6 +56,7 @@ Data generation and the add stage have several options:
 There are some additional options for retrieving results:
 
 - Dump the generated data to a GraphViz file.
+- Dump the insertion order to a CSV file, mainly for debugging.
 - Print benchmarking results in CSV format to stdout.
 
 See command-line help for syntax using --help for general options and --help on each subcommand for implementation specific options (e.g., database connection strings).
