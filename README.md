@@ -4,8 +4,11 @@ Generates Cascades-style memo-like data for experimentation. Although the genera
 
 ## Build
 
-1. Clone memobench, [optd](https://github.com/cmu-db/optd), and [optd-original](https://github.com/cmu-db/optd-original) in the same directory.
-2. cd memobench; cargo build --all-features
+```
+git clone https://github.com/jopereira/memobench.git
+cd memobench
+cargo build --all-features
+```
 
 ## Examples
 
@@ -19,12 +22,12 @@ Add 10M expressions to an in memory memo (from optd-original) and benchmark rand
 cargo run --features=optd-orignal --release -- -g 1000000 -e 10 -a -r mem
 ```
 
-Add a 1M expression DAG, triggering group merges, to an in memory memo (from optd-original) and benchmark rule matching:
+Add a 10K expression DAG, triggering group merges, to an in memory memo (from optd-original) and benchmark rule matching:
 ```
 cargo run --features=optd-orignal --release -- -g 1000 -d -e 10 -a -m  -u merge mem
 ```
 
-Add a small DAG to Redis and benchmark retrieval and rule matching (the server needs to be running on localost):
+Add a 10K expression DAG to Redis and benchmark retrieval and rule matching (the server needs to be running on localost):
 ```
 cargo run --features=redis --release -- -g 1000 -d -e 10 -A  -u lookup redis
 ```
@@ -38,7 +41,7 @@ done > output.csv
 
 ## Options
 
-The benchmark has sub-commands for each implementation of the memo data structure. Currently, mem (stored in memory, from optd-original), orm (stored in SQLite/Diesel, from optd), and redis (a simple implementation using Redis).
+The benchmark has sub-commands for each implementation of the memo data structure. Currently, mem (stored in memory, from optd-original), orm (stored in SQLite with sqlx, from optd), and redis (a simple implementation using Redis).
 
 There are currently three stages: add (that generates data and populates the memo), retrieve, that does lookups on a populated memo (and implicitly checks that it has been correctly inserted), and match (that simulates matching a single rule against the current memo).
 

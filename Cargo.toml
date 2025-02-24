@@ -12,9 +12,9 @@ rand = "0.8.5"
 rand_chacha = "0.3.1"
 hdrhistogram = "7.5.4"
 
-optd-core = { path = "../optd/optd-core", optional = true }
+optd-core = { git = "https://github.com/cmu-db/optd.git", optional = true }
 
-optd-original = { package = "optd-core", path = "../optd-original/optd-core", optional = true }
+optd-original = { package = "optd-core", git = "https://github.com/cmu-db/optd-original.git", optional = true }
 
 redis = { version = "0.27.5", optional = true }
 serde_json = { version = "1.0.132", optional = true }
