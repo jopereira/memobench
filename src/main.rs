@@ -10,6 +10,9 @@ mod inmem;
 #[cfg(feature = "optd")]
 mod inorm;
 
+#[cfg(feature = "calcite")]
+mod incalcite;
+
 use crate::generator::RawMemo;
 use crate::null::Null;
 
@@ -106,6 +109,9 @@ enum BenchTypes {
         #[arg(long, short = 'D', default_value = "redis://127.0.0.1/")]
         database: String,
     },
+    /// Apache Calcite
+    #[cfg(feature = "calcite")]
+    Calcite,
 }
 
 pub trait Benchmark {
@@ -140,6 +146,9 @@ fn main() {
 
         #[cfg(feature = "redis")]
         Some(BenchTypes::Redis { database }) => Box::new(crate::inredis::Redis::new(database).unwrap()),
+
+        #[cfg(feature = "calcite")]
+        Some(BenchTypes::Calcite) => Box::new(crate::incalcite::InCalcite::new().unwrap()),
     };
 
     let memo = RawMemo::new(
