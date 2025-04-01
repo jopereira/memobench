@@ -11,7 +11,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use crate::inmem::BenchPredTyp::Data;
+use crate::ioptdorig::BenchPredTyp::Data;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BenchRelNodeTyp {
@@ -57,15 +57,15 @@ impl Display for BenchPredTyp {
     }
 }
 
-pub struct InMem {
+pub struct BenchOptdOriginal {
     memo: NaiveMemo<BenchRelNodeTyp>,
     group_ids: Vec<GroupId>, // because get_all_group_ids() is pub(crate)
     entry: usize,
 }
 
-impl InMem {
+impl BenchOptdOriginal {
     pub fn new() -> Result<Self, Box<dyn Error>> {
-        Ok(InMem {
+        Ok(BenchOptdOriginal {
             memo: NaiveMemo::new(Arc::new([])),
             group_ids: vec![],
             entry: 0,
@@ -73,7 +73,7 @@ impl InMem {
     }
 }
 
-impl Benchmark for InMem {
+impl Benchmark for BenchOptdOriginal {
     fn add(&mut self, memo: &RawMemo) -> Result<Histogram<u64>, Box<dyn Error>> {
         let mut hist =
             Histogram::<u64>::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?;
@@ -206,7 +206,7 @@ struct MatchInfo {
     last: Instant,
 }
 
-impl InMem {
+impl BenchOptdOriginal {
     fn optimize_expression(&mut self, info: &mut MatchInfo, expr_id: ExprId) {
         if info.visited_exprs.insert(expr_id) {
             let top_expr = self.memo.get_expr_memoed(expr_id);

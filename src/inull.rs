@@ -6,15 +6,15 @@ use rand_chacha::ChaCha8Rng;
 use std::error::Error;
 use std::time::Duration;
 
-pub struct Null {}
+pub struct BenchNull {}
 
-impl Null {
+impl BenchNull {
     pub fn new() -> Result<Self, Box<dyn Error>> {
-        Ok(Null {})
+        Ok(BenchNull {})
     }
 }
 
-impl Benchmark for Null {
+impl Benchmark for BenchNull {
     fn add(&mut self, _memo: &RawMemo) -> Result<Histogram<u64>, Box<dyn Error>> {
         let hist =
             Histogram::<u64>::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?;

@@ -8,13 +8,13 @@ use std::error::Error;
 use std::time::{Duration, Instant};
 use j4rs::{ClasspathEntry, Instance, InvocationArg, Jvm, JvmBuilder, Null};
 
-pub struct InCalcite {
+pub struct BenchCalcite {
     jvm: Jvm,
     bridge: Instance,
     relsubsets: Vec<Instance>
 }
 
-impl InCalcite {
+impl BenchCalcite {
     pub fn new() -> Result<Self, Box<dyn Error>> {
         let entry = ClasspathEntry::new("./bridge/target/calcite-bridge-1.0-SNAPSHOT-jar-with-dependencies.jar");
         let jvm: Jvm = JvmBuilder::new()
@@ -24,7 +24,7 @@ impl InCalcite {
             "pt.inesctec.memobench.CalciteBridge",
             InvocationArg::empty(),
         )?;
-        Ok(InCalcite {
+        Ok(BenchCalcite {
             jvm,
             bridge,
             relsubsets: vec![],
@@ -32,7 +32,7 @@ impl InCalcite {
     }
 }
 
-impl Benchmark for InCalcite {
+impl Benchmark for BenchCalcite {
     fn add(&mut self, memo: &RawMemo) -> Result<Histogram<u64>, Box<dyn Error>> {
         let mut hist =
             Histogram::<u64>::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?;

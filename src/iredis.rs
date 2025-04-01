@@ -10,15 +10,15 @@ use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
 use std::time::{Duration, Instant};
 
-pub struct Redis {
+pub struct BenchRedis {
     client: redis::Client,
     ngroups: usize,
     entry: usize,
 }
 
-impl Redis {
+impl BenchRedis {
     pub fn new(database: String) -> Result<Self, Box<dyn Error>> {
-        Ok(Redis {
+        Ok(BenchRedis {
             client: redis::Client::open(database)?,
             ngroups: 0,
             entry: 0,
@@ -26,7 +26,7 @@ impl Redis {
     }
 }
 
-impl Benchmark for Redis {
+impl Benchmark for BenchRedis {
     fn add(&mut self, memo: &RawMemo) -> Result<Histogram<u64>, Box<dyn Error>> {
         let mut hist =
             Histogram::<u64>::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?;
@@ -135,7 +135,7 @@ struct MatchInfo {
     last: Instant,
 }
 
-impl Redis {
+impl BenchRedis {
     fn optimize_expression(&mut self, info: &mut MatchInfo, expr_id: usize, json: &String) -> Result<(),Box<dyn Error>>{
         if info.visited_exprs.insert(expr_id) {
             let top_expr: Value = serde_json::from_str(json)?;

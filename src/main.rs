@@ -1,20 +1,20 @@
 mod generator;
-mod null;
+mod inull;
 
 #[cfg(feature = "redis")]
-mod inredis;
+mod iredis;
 
-#[cfg(feature = "optd-original")]
-mod inmem;
+#[cfg(feature = "optd_original")]
+mod ioptdorig;
 
-#[cfg(feature = "optd")]
-mod inorm;
+#[cfg(feature = "optd_db")]
+mod ioptddb;
 
 #[cfg(feature = "calcite")]
-mod incalcite;
+mod icalcite;
 
 use crate::generator::RawMemo;
-use crate::null::Null;
+use crate::inull::BenchNull;
 
 use clap::{arg, Parser, Subcommand, ValueEnum};
 use hdrhistogram::Histogram;
@@ -92,16 +92,16 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum BenchTypes {
-    /// optd in ORM
-    #[cfg(feature = "optd")]
-    ORM {
+    /// optd in Database
+    #[cfg(feature = "optd_db")]
+    OptdDb {
         /// Database connection URL
         #[arg(long, short = 'D', default_value = ":memory:")]
         database: String,
     },
     /// optd-original in-memory benchmark
-    #[cfg(feature = "optd-original")]
-    Mem,
+    #[cfg(feature = "optd_original")]
+    OptdOrig,
     /// Redis/Valkey benchmark
     #[cfg(feature = "redis")]
     Redis {
@@ -136,19 +136,19 @@ fn main() {
     info!("repeat this run with --seed {}", seed);
 
     let mut benchmark: Box<dyn Benchmark> = match args.benchtype {
-        None => Box::new(Null::new().unwrap()),
+        None => Box::new(BenchNull::new().unwrap()),
 
-        #[cfg(feature = "optd")]
-        Some(BenchTypes::ORM { database }) => Box::new(crate::inorm::InORM::new(&database).unwrap()),
+        #[cfg(feature = "optd_db")]
+        Some(BenchTypes::OptdDb { database }) => Box::new(crate::ioptddb::BenchOptdDb::new(&database).unwrap()),
 
-        #[cfg(feature = "optd-original")]
-        Some(BenchTypes::Mem) => Box::new(crate::inmem::InMem::new().unwrap()),
+        #[cfg(feature = "optd_original")]
+        Some(BenchTypes::OptdOrig) => Box::new(crate::ioptdorig::BenchOptdOriginal::new().unwrap()),
 
         #[cfg(feature = "redis")]
-        Some(BenchTypes::Redis { database }) => Box::new(crate::inredis::Redis::new(database).unwrap()),
+        Some(BenchTypes::Redis { database }) => Box::new(crate::iredis::BenchRedis::new(database).unwrap()),
 
         #[cfg(feature = "calcite")]
-        Some(BenchTypes::Calcite) => Box::new(crate::incalcite::InCalcite::new().unwrap()),
+        Some(BenchTypes::Calcite) => Box::new(crate::icalcite::BenchCalcite::new().unwrap()),
     };
 
     let memo = RawMemo::new(

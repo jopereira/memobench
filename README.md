@@ -26,12 +26,12 @@ cargo run -- -o memo.dot ; dot -T pdf memo.dot > memo.pdf ; open memo.pdf
 
 Add 10M expressions to an in-memory memo (from optd-original) and benchmark random retrieve:
 ```
-cargo run --features=optd-orignal --release -- -g 1000000 -e 10 -a -r mem
+cargo run --features=optd-orignal --release -- -g 1000000 -e 10 -a -r optd-orig
 ```
 
 Add a 10K expression DAG, triggering group merges, to an in-memory memo (from optd-original) and benchmark rule matching:
 ```
-cargo run --features=optd-orignal --release -- -g 1000 -d -e 10 -a -m  -u merge mem
+cargo run --features=optd-orignal --release -- -g 1000 -d -e 10 -a -m  -u merge optd-orig
 ```
 
 Add a 10K expression DAG to Redis and benchmark retrieval and rule matching (the server needs to be running on localost):
@@ -48,7 +48,7 @@ done > output.csv
 
 ## Options
 
-The benchmark has sub-commands for each implementation of the memo data structure. Currently, mem (stored in memory, from optd-original), orm (stored in SQLite with sqlx, from optd), redis (a simple implementation using Redis), and calcite (implemented in Java and stored in memory by Apache Calcite).
+The benchmark has sub-commands for each implementation of the memo data structure. Currently, optd-orig (stored in memory, from optd-original), optd-db (stored in SQLite with sqlx, from optd), redis (a simple implementation using Redis), and calcite (implemented in Java and stored in memory by Apache Calcite).
 
 There are currently three stages: add (that generates data and populates the memo), retrieve (that does lookups on a populated memo (and implicitly checks that it has been correctly inserted), and match (that simulates matching a single rule against the current memo).
 

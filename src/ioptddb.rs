@@ -5,38 +5,38 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use hdrhistogram::Histogram;
 use log::{debug, warn};
-use optd_core::cascades::expressions::{LogicalExpression, LogicalExpressionId};
-use optd_core::cascades::groups::{RelationalGroupId, ScalarGroupId};
-use optd_core::cascades::memo::Memoize;
-use optd_core::operators::relational::logical::filter::Filter;
-use optd_core::operators::relational::logical::join::Join;
-use optd_core::operators::relational::logical::scan::Scan;
-use optd_core::operators::scalar::constants::Constant;
-use optd_core::operators::scalar::ScalarOperator;
-use optd_core::storage::memo::SqliteMemo;
-use optd_core::values::OptdValue;
+use optd_db::cascades::expressions::{LogicalExpression, LogicalExpressionId};
+use optd_db::cascades::groups::{RelationalGroupId, ScalarGroupId};
+use optd_db::cascades::memo::Memoize;
+use optd_db::operators::relational::logical::filter::Filter;
+use optd_db::operators::relational::logical::join::Join;
+use optd_db::operators::relational::logical::scan::Scan;
+use optd_db::operators::scalar::constants::Constant;
+use optd_db::operators::scalar::ScalarOperator;
+use optd_db::storage::memo::SqliteMemo;
+use optd_db::values::OptdValue;
 use rand::Rng;
 use rand_chacha::ChaCha8Rng;
 use tokio::runtime::Runtime;
 use crate::Benchmark;
 use crate::generator::RawMemo;
 
-pub struct InORM {
+pub struct BenchOptdDb {
     memo: SqliteMemo,
     group_ids: Vec<RelationalGroupId>,
     entry: RelationalGroupId,
 }
 
-impl InORM {
+impl BenchOptdDb {
     pub fn new(database: &str) -> Result<Self,Box<dyn Error>> {
         let runtime = Runtime::new().unwrap();
         runtime.block_on(async {
-            Ok(InORM { memo: SqliteMemo::new(database).await?, group_ids: vec![], entry: RelationalGroupId(0) })
+            Ok(BenchOptdDb { memo: SqliteMemo::new(database).await?, group_ids: vec![], entry: RelationalGroupId(0) })
         })
     }
 }
 
-impl Benchmark for InORM {
+impl Benchmark for BenchOptdDb {
     fn add(&mut self, memo: &RawMemo) -> Result<Histogram<u64>, Box<dyn Error>> {
         let mut hist =
             Histogram::<u64>::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?;
@@ -164,7 +164,7 @@ struct MatchInfo {
     last: Instant,
 }
 
-impl InORM {
+impl BenchOptdDb {
     async fn predicate_from_val(&self, value: usize) -> ScalarGroupId {
         self.memo.add_scalar_expr(
             &ScalarOperator::Constant(
