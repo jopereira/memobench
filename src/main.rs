@@ -10,6 +10,9 @@ mod ioptdorig;
 #[cfg(feature = "optd_db")]
 mod ioptddb;
 
+#[cfg(feature = "optd_mem")]
+mod ioptdmem;
+
 #[cfg(feature = "calcite")]
 mod icalcite;
 
@@ -92,6 +95,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum BenchTypes {
+    /// optd in-memory benchmark
+    #[cfg(feature = "optd_mem")]
+    OptdMem,
     /// optd in Database
     #[cfg(feature = "optd_db")]
     OptdDb {
@@ -137,6 +143,9 @@ fn main() {
 
     let mut benchmark: Box<dyn Benchmark> = match args.benchtype {
         None => Box::new(BenchNull::new().unwrap()),
+
+        #[cfg(feature = "optd_mem")]
+        Some(BenchTypes::OptdMem) => Box::new(crate::ioptdmem::BenchOptdMem::new().unwrap()),
 
         #[cfg(feature = "optd_db")]
         Some(BenchTypes::OptdDb { database }) => Box::new(crate::ioptddb::BenchOptdDb::new(&database).unwrap()),

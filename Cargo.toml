@@ -12,6 +12,7 @@ rand = "0.8.5"
 rand_chacha = "0.3.1"
 hdrhistogram = "7.5.4"
 
+optd-mem = { package = "optd-core", git = "https://github.com/jopereira/optd.git", branch="for-testing", optional = true }
 optd-db = { package = "optd-core", git = "https://github.com/cmu-db/optd.git", rev="8056a4bf8909008a8b70206338dd2eb6ffd910bd", optional = true }
 
 optd-original = { package = "optd-core", git = "https://github.com/cmu-db/optd-original.git", optional = true }
@@ -22,6 +23,7 @@ serde_json = { version = "1.0.132", optional = true }
 j4rs = { version = "0.22.0", optional = true }
 
 [features]
+optd_mem = ["dep:optd-mem"]
 optd_db = ["dep:optd-db"]
 optd_original = ["dep:optd-original"]
 redis = ["dep:redis", "dep:serde_json"]
