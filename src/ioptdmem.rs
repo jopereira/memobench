@@ -3,14 +3,13 @@ use crate::Benchmark;
 use hdrhistogram::Histogram;
 use log::warn;
 use std::error::Error;
-use std::future::Future;
 use std::time::{Duration, Instant};
-use optd_mem::cir::{LogicalExpression, OperatorData, GroupId, Child};
-use optd_mem::memo::Memoize;
+use optd_mem::core::cir::{LogicalExpression, OperatorData, GroupId, Child};
+use optd_mem::core::memo::Memoize;
 use rand::Rng;
 use rand_chacha::ChaCha8Rng;
 use tokio::runtime::Runtime;
-use optd_mem::memo::memory::MemoryMemo;
+use optd_mem::core::memo::memory::MemoryMemo;
 
 pub struct BenchOptdMem {
     memo: MemoryMemo,
@@ -43,9 +42,9 @@ impl Benchmark for BenchOptdMem {
                     let e = &memo.exprs[*j];
 
                     let expr = match e.op {
-                        0 => LogicalExpression::new("Scan".to_string(), vec![OperatorData::Int64(*j as i64)], vec![]),
-                        1 => LogicalExpression::new("Filter".to_string(), vec![OperatorData::Int64(*j as i64)], vec![Child::Singleton(self.group_ids[e.children[0]])]),
-                        2 => LogicalExpression::new("Filter".to_string(), vec![OperatorData::Int64(*j as i64)], vec![Child::Singleton(self.group_ids[e.children[0]]), Child::Singleton(self.group_ids[e.children[1]])]),
+                        0 => LogicalExpression { tag: "Scan".to_string(), data: vec![OperatorData::Int64(*j as i64)], children: vec![] },
+                        1 => LogicalExpression { tag: "Filter".to_string(), data: vec![OperatorData::Int64(*j as i64)], children: vec![Child::Singleton(self.group_ids[e.children[0]])] },
+                        2 => LogicalExpression { tag: "Filter".to_string(), data: vec![OperatorData::Int64(*j as i64)], children: vec![Child::Singleton(self.group_ids[e.children[0]]), Child::Singleton(self.group_ids[e.children[1]])] },
                         _ => unreachable!(),
                     };
 
