@@ -104,8 +104,7 @@ impl Benchmark for BenchOptdDb {
         let runtime = Runtime::new().unwrap();
         runtime.block_on(async {
             let mut _tot = 0;
-            for _ in 0..1000 {
-                let g = rng.gen_range(0..memo.groups.len());
+            for g in (0..memo.groups.len()).chain((0..1000).map(|_| { rng.gen_range(0..memo.groups.len()) })) {
 
                 let start = Instant::now();
 

@@ -158,8 +158,7 @@ impl Benchmark for BenchOptdOriginal {
             Histogram::<u64>::new_with_bounds(1, Duration::from_secs(1).as_nanos() as u64, 2)?;
 
         let mut _tot = 0;
-        for _ in 0..1000 {
-            let g = rng.gen_range(0..memo.groups.len());
+        for g in (0..memo.groups.len()).chain((0..1000).map(|_| { rng.gen_range(0..memo.groups.len()) })) {
 
             let start = Instant::now();
 
