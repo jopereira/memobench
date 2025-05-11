@@ -106,7 +106,7 @@ impl Benchmark for BenchRedis {
             }
 
             ids.sort();
-            assert!(ids == memo.groups[g].exprs, "incorrect memo (do not use --shuffle merge!)")
+            assert_eq!(ids, memo.groups[g].exprs, "incorrect memo (do not use --shuffle merge?)")
         }
 
         Ok(hist)

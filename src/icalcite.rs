@@ -114,7 +114,7 @@ impl Benchmark for BenchCalcite {
             }
 
             ids.sort();
-            assert!(ids == memo.groups[g].exprs)
+            assert_eq!(ids, memo.groups[g].exprs, "incorrect memo")
         }
 
         Ok(hist)
