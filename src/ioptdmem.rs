@@ -4,12 +4,12 @@ use hdrhistogram::Histogram;
 use log::warn;
 use std::error::Error;
 use std::time::{Duration, Instant};
-use optd_mem::core::cir::{LogicalExpression, OperatorData, GroupId, Child};
-use optd_mem::core::memo::Memoize;
+use optd_mem::cir::{LogicalExpression, LogicalProperties, OperatorData, GroupId, Child};
+use optd_mem::memo::{Memo,Materialize};
+use optd_mem::memo::memory::MemoryMemo;
 use rand::Rng;
 use rand_chacha::ChaCha8Rng;
 use tokio::runtime::Runtime;
-use optd_mem::core::memo::memory::MemoryMemo;
 
 pub struct BenchOptdMem {
     memo: MemoryMemo,
@@ -52,7 +52,7 @@ impl Benchmark for BenchOptdMem {
                     let gid = match self.memo.find_logical_expr_group(eid).await.unwrap() {
                         None => {
                             // new expression, create a (temporary) group
-                            self.memo.create_group(eid).await.unwrap()
+                            self.memo.create_group(eid, &LogicalProperties(None)).await.unwrap()
                         }
                         Some(id) => {
                             // expression already existed, just use its group
