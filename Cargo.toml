@@ -12,7 +12,7 @@ rand = "0.8.5"
 rand_chacha = "0.3.1"
 hdrhistogram = "7.5.4"
 
-optd-mem = { package = "optd", git = "https://github.com/cmu-db/optd.git", branch="alexis/optimizer", optional = true }
+optd-mem = { package = "optd", git = "https://github.com/cmu-db/optd.git", branch="main", optional = true }
 optd-db = { package = "optd-core", git = "https://github.com/cmu-db/optd.git", rev="8056a4bf8909008a8b70206338dd2eb6ffd910bd", optional = true }
 
 optd-original = { package = "optd-core", git = "https://github.com/cmu-db/optd-original.git", optional = true }
