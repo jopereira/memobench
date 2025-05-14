@@ -21,7 +21,7 @@ mvn package
 
 Visualize a small memo:
 ```
-cargo run -- -o memo.dot ; dot -T pdf memo.dot > memo.pdf ; open memo.pdf
+cargo run -- --raw-dot memo.dot ; dot -T pdf memo.dot > memo.pdf ; open memo.pdf
 ```
 
 Add 10M expressions to an in-memory memo (from optd-original) and benchmark random retrieve:
@@ -48,7 +48,7 @@ done > output.csv
 
 ## Options
 
-The benchmark has sub-commands for each implementation of the memo data structure. Currently, optd-orig (stored in memory, from optd-original), optd-mem (stored in memory, from optd), optd-db (stored in SQLite with sqlx, from optd), redis (a simple implementation using Redis), and calcite (implemented in Java and stored in memory by Apache Calcite).
+The benchmark has sub-commands for each implementation of the memo data structure. Currently, optd-orig (stored in memory, from optd-original), optd-mem-h (stored in memory, from optd), optd-db (stored in SQLite with sqlx, from optd), redis (a simple implementation using Redis), and calcite (implemented in Java and stored in memory by Apache Calcite).
 
 There are currently three stages: add (that generates data and populates the memo), retrieve (that does lookups on a populated memo (and implicitly checks that it has been correctly inserted), and match (that simulates matching a single rule against the current memo).
 
